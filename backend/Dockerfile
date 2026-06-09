@@ -54,4 +54,4 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 4000
 
 # Run NestJS server
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
