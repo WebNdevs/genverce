@@ -7,6 +7,20 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  async rewrites() {
+    const backend =
+      process.env.BACKEND_INTERNAL_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://localhost:4000';
+    return [
+      { source: '/graphql', destination: `${backend}/graphql` },
+      { source: '/graphql/:path*', destination: `${backend}/graphql/:path*` },
+      { source: '/upload', destination: `${backend}/upload` },
+      { source: '/upload/:path*', destination: `${backend}/upload/:path*` },
+      { source: '/uploads/:path*', destination: `${backend}/uploads/:path*` },
+      { source: '/webhooks/:path*', destination: `${backend}/webhooks/:path*` },
+    ];
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.amazonaws.com' },
