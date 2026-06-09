@@ -8,6 +8,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
   });
+  const expressApp = app.getHttpAdapter().getInstance();
+
+  expressApp.get('/health', (_req: any, res: any) => {
+    res.status(200).json({ status: 'ok' });
+  });
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
