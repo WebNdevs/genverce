@@ -5,8 +5,8 @@ WORKDIR /app
 
 ENV NODE_ENV=development
 
-# Install compilation tools needed for native packages (e.g. bcrypt)
-RUN apk add --no-cache make gcc g++ python3
+# Install compilation tools needed for native packages (e.g. bcrypt) and openssl for Prisma
+RUN apk add --no-cache make gcc g++ python3 openssl
 
 # Copy package descriptors
 COPY package*.json ./
@@ -37,7 +37,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install production dependencies only
-RUN apk add --no-cache make gcc g++ python3 \
+RUN apk add --no-cache openssl libc6-compat make gcc g++ python3 \
     && npm ci --only=production \
     && npm cache clean --force \
     && apk del make gcc g++ python3
