@@ -45,7 +45,7 @@ export class OrderResolver {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async allOrders(
-    @Args('status', { nullable: true }) status?: OrderStatus,
+    @Args('status', { type: () => OrderStatus, nullable: true }) status?: OrderStatus,
   ) {
     return this.orderService.findAll(status);
   }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -22,6 +23,48 @@ interface RevenueChartProps {
 export default function RevenueChart({
     data,
 }: RevenueChartProps) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [mounted, setMounted] = useState(false);
+    const [isChartReady, setIsChartReady] = useState(false);
+    const gradientId = useId().replace(/:/g, '');
+
+    const safeData = useMemo(
+        () =>
+            Array.isArray(data)
+                ? data.map((item) => ({
+                      month: item.month,
+                      revenue: Number(item.revenue) || 0,
+                  }))
+                : [],
+        [data]
+    );
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted || !containerRef.current) return;
+
+        const element = containerRef.current;
+        const updateReadyState = () => {
+            const { width, height } = element.getBoundingClientRect();
+            setIsChartReady(width > 0 && height > 0);
+        };
+
+        updateReadyState();
+
+        const observer = new ResizeObserver(() => {
+            updateReadyState();
+        });
+
+        observer.observe(element);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [mounted]);
+
     return (
         <div className="glass-card p-6 mb-6">
             {/* Header */}
@@ -42,10 +85,11 @@ export default function RevenueChart({
             </div>
 
             {/* Chart */}
-            <div className="h-[450px]  w-full">
-                <ResponsiveContainer width="100%" height="100%">
+            <div ref={containerRef} className="h-[450px] min-h-[450px] w-full min-w-0">
+                {mounted && isChartReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <AreaChart
-                        data={data}
+                        data={safeData}
                         margin={{
                             top: 40,
                             right: 60,
@@ -56,7 +100,7 @@ export default function RevenueChart({
                         {/* Gradient Fill */}
                         <defs>
                             <linearGradient
-                                id="revenueFill"
+                                id={gradientId}
                                 x1="0"
                                 y1="0"
                                 x2="0"
@@ -129,7 +173,7 @@ export default function RevenueChart({
                             dataKey="revenue"
                             stroke="#8B5CF6"
                             strokeWidth={3}
-                            fill="url(#revenueFill)"
+                            fill={`url(#${gradientId})`}
                             activeDot={{
                                 r: 6,
                                 strokeWidth: 2,
@@ -151,6 +195,7 @@ export default function RevenueChart({
                         </Area>
                     </AreaChart>
                 </ResponsiveContainer>
+                ) : null}
             </div>
         </div>
     );

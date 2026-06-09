@@ -431,7 +431,7 @@ input ProjectBriefInput {
 type Query {
   adminGetChat(chatId: String!): ChatModel!
   allChats: [ChatModel!]!
-  allOrders(status: String): [OrderModel!]!
+  allOrders(status: OrderStatus): [OrderModel!]!
   allTickets(status: TicketStatus): [TicketModel!]!
   allUsers: [UserModel!]!
   chat(influencerId: String!): ChatModel!

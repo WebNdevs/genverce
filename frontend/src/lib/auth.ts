@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User } from '@/types';
+import { toPublicAssetUrl } from './utils';
 
 interface AuthState {
   user: User | null;
@@ -19,7 +20,8 @@ const readLocalStorage = () => {
     return { user: null as User | null, token: null as string | null, isAuthenticated: false, hydrated: false };
   }
   try {
-    const user: User | null = JSON.parse(localStorage.getItem('genverce_user') || 'null');
+    const rawUser: User | null = JSON.parse(localStorage.getItem('genverce_user') || 'null');
+    const user = rawUser ? { ...rawUser, avatar: toPublicAssetUrl(rawUser.avatar) } : null;
     const token = localStorage.getItem('genverce_token');
     return { user, token, isAuthenticated: !!token, hydrated: true };
   } catch {
@@ -35,16 +37,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   // hydrate() is kept for backwards compatibility but is now a no-op on the
   // client because the store is already populated synchronously above.
   hydrate: () => {
-    const user: User | null = JSON.parse(localStorage.getItem('genverce_user') || 'null');
+    const rawUser: User | null = JSON.parse(localStorage.getItem('genverce_user') || 'null');
+    const user = rawUser ? { ...rawUser, avatar: toPublicAssetUrl(rawUser.avatar) } : null;
     const token = localStorage.getItem('genverce_token');
     set({ user, token, isAuthenticated: !!token, hydrated: true });
   },
 
   setAuth: (user, token, refreshToken) => {
+    const normalizedUser = { ...user, avatar: toPublicAssetUrl(user.avatar) };
     localStorage.setItem('genverce_token', token);
     localStorage.setItem('genverce_refresh_token', refreshToken);
-    localStorage.setItem('genverce_user', JSON.stringify(user));
-    set({ user, token, isAuthenticated: true, hydrated: true });
+    localStorage.setItem('genverce_user', JSON.stringify(normalizedUser));
+    set({ user: normalizedUser, token, isAuthenticated: true, hydrated: true });
   },
 
   logout: () => {
@@ -56,7 +60,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   updateUser: (updates) => {
     set((state) => {
-      const updatedUser = state.user ? { ...state.user, ...updates } : null;
+      const updatedUser = state.user
+        ? {
+            ...state.user,
+            ...updates,
+            avatar: toPublicAssetUrl(updates.avatar ?? state.user.avatar),
+          }
+        : null;
       if (updatedUser) {
         localStorage.setItem('genverce_user', JSON.stringify(updatedUser));
       }
