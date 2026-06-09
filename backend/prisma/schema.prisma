@@ -97,7 +97,7 @@ enum InfluencerServiceType {
 model Influencer {
   id            String                @id @default(uuid())
   name          String
-  bio           String
+  bio           String                @db.Text
   avatar        String
   coverImage    String?
   locationCity    String?
