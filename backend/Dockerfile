@@ -3,6 +3,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ENV NODE_ENV=development
+
 # Install compilation tools needed for native packages (e.g. bcrypt)
 RUN apk add --no-cache make gcc g++ python3
 
