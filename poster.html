@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Coffee Shop Poster</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#1a1008;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:16px;
+  padding:24px;
+}
+canvas {
+  display:block;
+  /* Scale down to fit viewport while keeping crisp 1080px source */
+  width: min(90vmin, 700px);
+  height: min(90vmin, 700px);
+  image-rendering: crisp-edges;
+  box-shadow: 0 20px 60px rgba(0,0,0,.8);
+}
+button {
+  padding:12px 40px;
+  background:#C4581C;
+  color:#EDE0C4;
+  border:none;
+  border-radius:8px;
+  font-size:16px;
+  font-weight:700;
+  cursor:pointer;
+  letter-spacing:1px;
+}
+button:hover { background:#a84818; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1080"></canvas>
+<button onclick="dl()">⬇  Download Poster</button>
+
+<script>
+/* ═══════════════════════════════════════════════
+   POSTER  1080 × 1080
+   All drawing confined inside x[60..1020] y[60..1020]
+   (60px safe margin every side)
+═══════════════════════════════════════════════ */
+const C = document.getElementById('c');
+const G = C.getContext('2d');
+const W = 1080, H = 1080;
+
+// ── palette ──
+const CREAM  = '#EDE0C4';
+const ORANGE = '#C4581C';
+const BROWN  = '#2C1506';
+const MBROWN = '#6B2E10';
+const LCREAM = '#F5EDD8';
+
+// ── safe zone ──
+const M = 60;          // margin on every side
+const SW = W - M*2;   // safe width  = 960
+const SH = H - M*2;   // safe height = 960
+
+/* ─── fitText: shrinks font until text ≤ maxW ─── */
+function fitText(txt, size, family, weight, color, x, y, maxW, align='center') {
+  G.textAlign = align;
+  G.fillStyle = color;
+  while (size > 10) {
+    G.font = `${weight} ${size}px ${family}`;
+    if (G.measureText(txt).width <= maxW) break;
+    size -= 2;
+  }
+  // fillText 4th arg is the browser's hard clamp
+  G.fillText(txt, x, y, maxW);
+}
+
+/* ─── rounded rect ─── */
+function rr(x,y,w,h,r) {
+  G.beginPath();
+  G.moveTo(x+r,y);
+  G.arcTo(x+w,y,  x+w,y+h, r);
+  G.arcTo(x+w,y+h,x,  y+h, r);
+  G.arcTo(x,  y+h,x,  y,   r);
+  G.arcTo(x,  y,  x+w,y,   r);
+  G.closePath();
+}
+
+function draw() {
+  G.clearRect(0,0,W,H);
+
+  /* ══════════════════════════════════════════
+     1. CREAM OUTER BACKGROUND
+  ══════════════════════════════════════════ */
+  G.fillStyle = CREAM;
+  G.fillRect(0,0,W,H);
+
+  /* ══════════════════════════════════════════
+     2. ORANGE UPPER SECTION  y[60 → 558]
+  ══════════════════════════════════════════ */
+  G.fillStyle = ORANGE;
+  G.fillRect(M, M, SW, 498);
+
+  /* ══════════════════════════════════════════
+     3. DARK BROWN LOWER SECTION  y[558 → 1020]
+  ══════════════════════════════════════════ */
+  G.fillStyle = BROWN;
+  G.fillRect(M, 558, SW, 462);
+
+  /* ══════════════════════════════════════════
+     4. CREAM INNER BORDER (decorative frame)
+     Thin cream rectangle just inside the outer margin
+  ══════════════════════════════════════════ */
+  G.strokeStyle = CREAM;
+  G.lineWidth = 3;
+  G.strokeRect(M+12, M+12, SW-24, SH-24);
+
+  /* ══════════════════════════════════════════
+     5. TITLE TEXT  — fully inside y[60..558]
+     "COFFEE" and "SHOP" centered with maxW=780
+  ══════════════════════════════════════════ */
+  const TX = W/2;          // centre x
+  const TW = SW - 120;     // max text width = 840 (with extra side padding)
+
+  // "COFFEE"
+  G.shadowColor = 'rgba(0,0,0,0.25)';
+  G.shadowBlur  = 6;
+  G.shadowOffsetY = 4;
+  fitText('COFFEE', 148, 'Georgia,"Times New Roman",serif', '900', CREAM, TX, 235, TW);
+  // "SHOP"
+  fitText('SHOP',   148, 'Georgia,"Times New Roman",serif', '900', CREAM, TX, 378, TW);
+  G.shadowBlur = 0; G.shadowOffsetY = 0;
+
+  /* ══════════════════════════════════════════
+     6. DARK OVAL BACKDROP  centred at (540,650)
+  ══════════════════════════════════════════ */
+  G.beginPath();
+  G.ellipse(540, 648, 310, 245, 0, 0, Math.PI*2);
+  G.fillStyle = BROWN;
+  G.fill();
+
+  /* ══════════════════════════════════════════
+     7. COFFEE CUP ILLUSTRATION
+     All coordinates kept inside x[60..1020] y[60..1020]
+  ══════════════════════════════════════════ */
+  const CX = 540;   // cup centre x
+  const CY = 700;   // cup centre y (bottom of liquid surface)
+
+  // — SAUCER —
+  // Outer saucer plate
+  G.beginPath();
+  G.ellipse(CX, CY+165, 185, 32, 0, 0, Math.PI*2);
+  G.fillStyle = CREAM;
+  G.fill();
+  G.strokeStyle = BROWN;
+  G.lineWidth = 5;
+  G.stroke();
+  // Saucer inner ring
+  G.beginPath();
+  G.ellipse(CX, CY+158, 100, 18, 0, 0, Math.PI*2);
+  G.strokeStyle = BROWN;
+  G.lineWidth = 3.5;
+  G.stroke();
+
+  // — CUP BODY —
+  const topW  = 130;   // half-width at top rim
+  const botW  = 108;   // half-width at bottom
+  const cTop  = CY - 10;
+  const cBot  = CY + 162;
+
+  G.beginPath();
+  G.moveTo(CX - topW, cTop);
+  // left side curve
+  G.bezierCurveTo(CX-topW-14, cTop+55, CX-botW-14, cBot-55, CX-botW, cBot);
+  // bottom arc
+  G.quadraticCurveTo(CX, cBot+22, CX+botW, cBot);
+  // right side curve
+  G.bezierCurveTo(CX+botW+14, cBot-55, CX+topW+14, cTop+55, CX+topW, cTop);
+  // top opening ellipse arc (close back to start)
+  G.quadraticCurveTo(CX, cTop-18, CX-topW, cTop);
+  G.fillStyle = CREAM;
+  G.fill();
+  G.strokeStyle = BROWN;
+  G.lineWidth = 5;
+  G.stroke();
+
+  // — COFFEE LIQUID SURFACE —
+  G.beginPath();
+  G.ellipse(CX, cTop, topW-8, 22, 0, 0, Math.PI*2);
+  G.fillStyle = MBROWN;
+  G.fill();
+  G.strokeStyle = BROWN;
+  G.lineWidth = 4.5;
+  G.stroke();
+  // foam bubbles on liquid
+  const dots = [
+    [-55,4],[−35,10],[−15,2],[5,12],[25,4],[45,10],
+    [−50,−6],[−20,−10],[10,−8],[40,−4],[−5,−2],
+  ];
+  dots.forEach(([dx,dy])=>{
+    G.beginPath();
+    G.arc(CX+dx*0.85, cTop+dy*0.5, 5, 0, Math.PI*2);
+    G.fillStyle = ORANGE;
+    G.fill();
+  });
+
+  // — HANDLE (right side) —
+  G.beginPath();
+  G.arc(CX+topW+34, cTop+80, 72, -0.52*Math.PI, 0.52*Math.PI);
+  G.strokeStyle = CREAM;
+  G.lineWidth = 22;
+  G.lineCap = 'round';
+  G.stroke();
+  G.strokeStyle = BROWN;
+  G.lineWidth = 5.5;
+  G.stroke();
+
+  // — STEAM WISPS (3 curves, tops clamped above y=60 safe margin) —
+  // Tallest wisp goes from cTop-20 up ~230px → y ≈ CY-260 ≈ 440 → well inside safe zone
+  const steamPts = [
+    { x: CX-50, amp: -18 },
+    { x: CX,    amp:  20 },
+    { x: CX+50, amp: -18 },
+  ];
+  steamPts.forEach(({x, amp}, i) => {
+    const y0  = cTop - 20;
+    const h   = 180 + i*20;
+    G.beginPath();
+    G.moveTo(x, y0);
+    G.bezierCurveTo(x+amp,     y0-h*0.25, x-amp,     y0-h*0.55, x,     y0-h*0.75);
+    G.bezierCurveTo(x+amp*0.7, y0-h*0.85, x-amp*0.7, y0-h*0.95, x,     y0-h);
+    G.strokeStyle = CREAM;
+    G.lineWidth   = i===1 ? 7.5 : 5.5;
+    G.lineCap     = 'round';
+    G.stroke();
+  });
+
+  /* ══════════════════════════════════════════
+     8. BOTTOM TEXT  — fully inside y[558..1020]
+     "FRESHLY BREWED" centred, maxW = 780
+     Text baseline at y=972 → top ≈ 908 → inside safe zone ✓
+  ══════════════════════════════════════════ */
+  // decorative dots row  ·  ·  ·
+  [-3,-2,-1,0,1,2,3].forEach((i)=>{
+    G.beginPath();
+    G.arc(W/2 + i*32, 596, 4, 0, Math.PI*2);
+    G.fillStyle = 'rgba(237,224,196,0.45)';
+    G.fill();
+  });
+
+  G.shadowColor = 'rgba(0,0,0,0.4)';
+  G.shadowBlur  = 5;
+  G.shadowOffsetY = 3;
+  fitText('FRESHLY BREWED', 78, 'Georgia,"Times New Roman",serif', '900', CREAM, W/2, 972, TW);
+  G.shadowBlur = 0; G.shadowOffsetY = 0;
+
+  // thin rule above bottom text
+  G.fillStyle = 'rgba(237,224,196,0.35)';
+  G.fillRect(W/2-200, 898, 400, 3);
+
+  /* ══════════════════════════════════════════
+     9. OUTER CREAM BORDER SIDES
+     Re-draw the cream edges so nothing bleeds through
+  ══════════════════════════════════════════ */
+  G.fillStyle = CREAM;
+  G.fillRect(0, 0, M, H);          // left
+  G.fillRect(W-M, 0, M, H);        // right
+  G.fillRect(0, 0, W, M);          // top
+  G.fillRect(0, H-M, W, M);        // bottom
+
+  // fine inner border line
+  G.strokeStyle = MBROWN;
+  G.lineWidth = 2;
+  G.strokeRect(M+6, M+6, SW-12, SH-12);
+}
+
+draw();
+
+function dl() {
+  const a = document.createElement('a');
+  a.href     = C.toDataURL('image/png');
+  a.download = 'coffee-shop-poster.png';
+  a.click();
+}
+</script>
+</body>
+</html>

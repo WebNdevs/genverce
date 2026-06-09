@@ -1,0 +1,606 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input AIConfigInput {
+  chatApiKey: String
+  chatApiUrl: String
+  chatModel: String
+  imageApiKey: String
+  imageApiUrl: String
+  imageModel: String
+  postApiKey: String
+  postApiUrl: String
+  postModel: String
+  scriptApiKey: String
+  scriptApiUrl: String
+  scriptModel: String
+  videoApiKey: String
+  videoApiUrl: String
+  videoModel: String
+  voiceApiKey: String
+  voiceApiUrl: String
+  voiceModel: String
+}
+
+type AIConfigModel {
+  chatApiKey: String
+  chatApiUrl: String
+  chatModel: String
+  imageApiKey: String
+  imageApiUrl: String
+  imageModel: String
+  postApiKey: String
+  postApiUrl: String
+  postModel: String
+  scriptApiKey: String
+  scriptApiUrl: String
+  scriptModel: String
+  videoApiKey: String
+  videoApiUrl: String
+  videoModel: String
+  voiceApiKey: String
+  voiceApiUrl: String
+  voiceModel: String
+}
+
+enum AccountType {
+  AGENCY
+  INDIVIDUAL
+}
+
+input AdminCreateOrderInput {
+  aiDisclosure: Boolean!
+  customerId: String!
+  deliveryType: String!
+  influencerId: String!
+  package: String!
+  price: Float
+  projectBrief: ProjectBriefInput!
+  status: String
+}
+
+input AdminUpdateOrderInput {
+  aiDisclosure: Boolean
+  deliveryType: String
+  generatedImages: [GeneratedImageInput!]
+  id: String!
+  package: String
+  price: Float
+  projectBrief: ProjectBriefInput
+  status: String
+}
+
+input AdminUpdateUserInput {
+  company: String
+  email: String
+  name: String
+  role: Role
+}
+
+type AuthResponse {
+  accessToken: String!
+  refreshToken: String!
+  user: UserModel!
+}
+
+type ChatModel {
+  createdAt: DateTime!
+  customer: UserModel
+  customerId: String!
+  id: ID!
+  influencer: InfluencerModel
+  influencerId: String!
+  messages: [MessageModel!]!
+}
+
+type CheckoutSessionResponse {
+  sessionId: String!
+  url: String!
+}
+
+input CompleteOnboardingInput {
+  brandName: String!
+  contentTypes: [String!]!
+  goal: String!
+  industry: String!
+  platforms: [String!]!
+  productName: String
+  requestedCustomInfluencer: Boolean
+  targetAudience: String!
+  tone: String!
+  website: String!
+}
+
+input CreateFaqInput {
+  answers: [String!]!
+  keywords: String
+  question: String!
+}
+
+input CreateInfluencerInput {
+  aiConfig: AIConfigInput
+  avatar: String!
+  bio: String!
+  contentStyle: String!
+  coverImage: String
+  hourlyRate: Float
+  industries: [String!]!
+  languages: [String!]!
+  locationAddress: String
+  locationCity: String
+  locationCountry: String
+  locationPincode: String
+  locationState: String
+  name: String!
+  outOfTopicMessage: String
+  serviceType: InfluencerServiceType
+  systemPrompt: String!
+  topic: String
+  voiceId: String
+}
+
+input CreateOrderInput {
+  aiDisclosure: Boolean!
+  deliveryType: String!
+  influencerId: String!
+  package: String!
+  projectBrief: ProjectBriefInput!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+enum DeliveryType {
+  INSTANT
+  QUALITY_CHECKED
+}
+
+type FaqEntryType {
+  answers: [String!]!
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  keywords: String
+  question: String!
+  updatedAt: DateTime!
+}
+
+input FilterInfluencerInput {
+  contentStyle: String
+  includeInactive: Boolean
+  includeTrashed: Boolean
+  industry: String
+  language: String
+  limit: Int = 12
+  maxPrice: Float
+  minRating: Float
+  onlyTrashed: Boolean
+  page: Int = 1
+  search: String
+}
+
+type FilterOptionsResponse {
+  contentStyles: [String!]!
+  industries: [String!]!
+  languages: [String!]!
+}
+
+input GeneratedImageInput {
+  createdAt: String!
+  delivered: Boolean
+  deliveredAt: String
+  messageId: String!
+  url: String!
+}
+
+type GeneratedImageModel {
+  createdAt: DateTime!
+  delivered: Boolean
+  deliveredAt: DateTime
+  messageId: String!
+  url: String!
+}
+
+type InfluencerListResponse {
+  influencers: [InfluencerModel!]!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}
+
+type InfluencerModel {
+  aiConfig: AIConfigModel
+  avatar: String!
+  bio: String!
+  contentStyle: String!
+  coverImage: String
+  createdAt: DateTime!
+  deletedAt: DateTime
+  hourlyRate: Float
+  id: ID!
+  industries: [String!]!
+  isActive: Boolean!
+  languages: [String!]!
+  locationAddress: String
+  locationCity: String
+  locationCountry: String
+  locationPincode: String
+  locationState: String
+  name: String!
+  outOfTopicMessage: String
+  packages: [InfluencerPackageModel!]!
+  portfolio: [PortfolioModel!]!
+  rating: Float!
+  serviceType: InfluencerServiceType!
+  systemPrompt: String
+  topic: String
+  totalProjects: Int!
+  totalReviews: Int!
+  voiceId: String
+}
+
+type InfluencerPackageModel {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  influencerId: String!
+  isActive: Boolean!
+  isMonthly: Boolean!
+  name: String!
+  price: Float!
+  sortOrder: Int!
+  type: PackageType!
+  videoCount: Int!
+}
+
+enum InfluencerServiceType {
+  CHAT_ONLY
+  IMAGE_CREATION
+  POST_CREATION
+  VIDEO_CREATION
+}
+
+"""
+The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSONObject
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type MessageModel {
+  chatId: String!
+  content: String!
+  createdAt: DateTime!
+  id: ID!
+  imageUrl: String
+  role: MessageRole!
+}
+
+enum MessageRole {
+  ASSISTANT
+  SYSTEM
+  USER
+}
+
+type Mutation {
+  activateInfluencer(id: String!): InfluencerModel!
+  activateUser(userId: String!): UserModel!
+  adminCreateOrder(input: AdminCreateOrderInput!): OrderModel!
+  adminSendMessage(chatId: String!, content: String!): MessageModel!
+  adminUpdateOrder(input: AdminUpdateOrderInput!): OrderModel!
+  adminUpdateUser(input: AdminUpdateUserInput!, userId: String!): UserModel!
+  approveOrder(id: String!): OrderModel!
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
+  completeOnboarding(input: CompleteOnboardingInput!): UserModel!
+  createCheckoutSession(orderId: String!): CheckoutSessionResponse!
+  createFaqEntry(input: CreateFaqInput!): FaqEntryType!
+  createInfluencer(input: CreateInfluencerInput!): InfluencerModel!
+  createInfluencerPackage(influencerId: String!, input: UpsertInfluencerPackageInput!): InfluencerModel!
+  createOrder(input: CreateOrderInput!): OrderModel!
+  createReview(comment: String, orderId: String!, rating: Float!): ReviewModel!
+  createTicket(issue: String!, orderId: String): TicketModel!
+  deactivateInfluencer(id: String!): InfluencerModel!
+  deactivateUser(userId: String!): UserModel!
+  deleteFaqEntry(id: ID!): Boolean!
+  deleteInfluencerPackage(id: String!): Boolean!
+  login(input: LoginInput!): AuthResponse!
+  logout: Boolean!
+  markAllNotificationsRead: Boolean!
+  markNotificationRead(id: String!): Boolean!
+  refreshTokens: AuthResponse!
+  rejectOrder(id: String!, notes: String!): OrderModel!
+  reopenTicket(id: String!, note: String!): TicketModel!
+  requestRefund(orderId: String!): PaymentModel!
+  resolveTicket(id: String!, resolution: String!): TicketModel!
+  restoreInfluencer(id: String!): InfluencerModel!
+  restoreUser(userId: String!): UserModel!
+  signup(input: SignupInput!): AuthResponse!
+  softDeleteInfluencer(id: String!): InfluencerModel!
+  softDeleteUser(userId: String!): UserModel!
+  startChat(influencerId: String!): ChatModel!
+  updateFaqEntry(id: ID!, input: UpdateFaqInput!): FaqEntryType!
+  updateInfluencer(id: String!, input: UpdateInfluencerInput!): InfluencerModel!
+  updateInfluencerPackage(id: String!, input: UpdateInfluencerPackageInput!): InfluencerModel!
+  updateProfile(avatar: String, company: String, name: String, username: String): UserModel!
+  updateSiteSettings(input: UpdateSiteSettingsInput!): SiteSettings!
+  updateTicketStatus(id: String!, status: TicketStatus!): TicketModel!
+  upsertInfluencerPackage(influencerId: String!, input: UpsertInfluencerPackageInput!): InfluencerModel!
+}
+
+type NotificationModel {
+  createdAt: DateTime!
+  description: String
+  href: String!
+  id: ID!
+  read: Boolean!
+  title: String!
+  userId: String!
+}
+
+type OrderModel {
+  aiDisclosure: Boolean!
+  createdAt: DateTime!
+  customer: UserModel
+  customerId: String!
+  deliveredAt: DateTime
+  deliveryType: DeliveryType!
+  generatedImages: [GeneratedImageModel!]
+  id: ID!
+  influencer: InfluencerModel
+  influencerId: String!
+  package: PackageType!
+  price: Float!
+  projectBrief: JSONObject!
+  review: ReviewModel
+  reviewNotes: String
+  reviewedAt: DateTime
+  reviewedBy: String
+  status: OrderStatus!
+  thumbnailUrl: String
+  videoUrl: String
+  videosDelivered: Int!
+  videosOrdered: Int!
+}
+
+enum OrderStatus {
+  APPROVED
+  CANCELLED
+  DELIVERED
+  GENERATING
+  PAID
+  PENDING_PAYMENT
+  PENDING_REVIEW
+  REFUNDED
+  REJECTED
+}
+
+enum PackageType {
+  CUSTOM
+  MONTHLY_GROWTH
+  MONTHLY_STARTER
+  PACK_5
+  PACK_10
+  SINGLE
+}
+
+type PaymentModel {
+  amount: Float!
+  createdAt: DateTime!
+  currency: String!
+  customerId: String!
+  id: ID!
+  orderId: String!
+  refundedAmount: Float!
+  status: PaymentStatus!
+  stripePaymentId: String
+}
+
+enum PaymentStatus {
+  FAILED
+  PARTIALLY_REFUNDED
+  PENDING
+  REFUNDED
+  SUCCEEDED
+}
+
+type PortfolioModel {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  thumbnailUrl: String!
+  title: String!
+  videoUrl: String!
+}
+
+input ProjectBriefInput {
+  additionalNotes: String
+  inclusions: [String!]!
+  keyMessage: String!
+  posterPlan: String
+  productName: String!
+  targetAudience: String!
+  tone: String!
+}
+
+type Query {
+  adminGetChat(chatId: String!): ChatModel!
+  allChats: [ChatModel!]!
+  allOrders(status: String): [OrderModel!]!
+  allTickets(status: TicketStatus): [TicketModel!]!
+  allUsers: [UserModel!]!
+  chat(influencerId: String!): ChatModel!
+  faqEntries: [FaqEntryType!]!
+  influencer(id: String!): InfluencerModel!
+  influencerChats(influencerId: String!): [ChatModel!]!
+  influencerFilterOptions: FilterOptionsResponse!
+  influencerOrders(influencerId: String!): [OrderModel!]!
+  influencerReviews(influencerId: String!): [ReviewModel!]!
+  influencers(filter: FilterInfluencerInput): InfluencerListResponse!
+  me: UserModel!
+  myChats: [ChatModel!]!
+  myNotifications: [NotificationModel!]!
+  myOrders: [OrderModel!]!
+  myStats: UserStatsModel!
+  myTickets: [TicketModel!]!
+  order(id: String!): OrderModel!
+  pendingReviewOrders: [OrderModel!]!
+  siteSettings: SiteSettings!
+  topInfluencers(limit: Int = 6): [InfluencerModel!]!
+  trashedUsers: [UserModel!]!
+  users(role: String): [UserModel!]!
+}
+
+type ReviewModel {
+  comment: String
+  createdAt: DateTime!
+  customer: UserModel
+  customerId: String!
+  id: ID!
+  influencerId: String!
+  orderId: String!
+  rating: Float!
+}
+
+enum Role {
+  ADMIN
+  AGENCY
+  CUSTOMER
+  REVIEWER
+}
+
+input SignupInput {
+  accountType: String
+  brandName: String
+  company: String
+  contentTypes: [String!]
+  email: String!
+  goal: String
+  industry: String
+  name: String!
+  password: String!
+  platforms: [String!]
+  productName: String
+  targetAudience: String
+  tone: String
+  website: String
+}
+
+type SiteSettings {
+  chatApiKey: String
+  chatApiUrl: String
+  chatModel: String
+}
+
+type TicketModel {
+  createdAt: DateTime!
+  customer: UserModel
+  customerId: String!
+  id: ID!
+  issue: String!
+  order: OrderModel
+  orderId: String
+  reopenNote: String
+  resolution: String
+  status: TicketStatus!
+  updatedAt: DateTime!
+}
+
+enum TicketStatus {
+  CLOSED
+  IN_PROGRESS
+  OPEN
+  RESOLVED
+}
+
+input UpdateFaqInput {
+  answers: [String!]
+  isActive: Boolean
+  keywords: String
+  question: String
+}
+
+input UpdateInfluencerInput {
+  aiConfig: AIConfigInput
+  avatar: String
+  bio: String
+  contentStyle: String
+  coverImage: String
+  hourlyRate: Float
+  industries: [String!]
+  languages: [String!]
+  locationAddress: String
+  locationCity: String
+  locationCountry: String
+  locationPincode: String
+  locationState: String
+  name: String
+  outOfTopicMessage: String
+  serviceType: InfluencerServiceType
+  systemPrompt: String
+  topic: String
+  voiceId: String
+}
+
+input UpdateInfluencerPackageInput {
+  description: String
+  isActive: Boolean
+  isMonthly: Boolean
+  name: String
+  price: Float
+  sortOrder: Int
+  videoCount: Int
+}
+
+input UpdateSiteSettingsInput {
+  chatApiKey: String
+  chatApiUrl: String
+  chatModel: String
+}
+
+input UpsertInfluencerPackageInput {
+  description: String
+  isActive: Boolean
+  isMonthly: Boolean
+  name: String!
+  price: Float!
+  sortOrder: Int
+  type: PackageType!
+  videoCount: Int!
+}
+
+type UserModel {
+  accountType: AccountType!
+  avatar: String
+  brandName: String
+  company: String
+  contentTypes: [String!]
+  createdAt: DateTime!
+  deletedAt: DateTime
+  email: String!
+  goal: String
+  id: ID!
+  industry: String
+  isActive: Boolean!
+  isOnboarded: Boolean!
+  name: String!
+  platforms: [String!]
+  productName: String
+  requestedCustomInfluencer: Boolean!
+  role: Role!
+  targetAudience: String
+  tone: String
+  username: String
+  website: String
+}
+
+type UserStatsModel {
+  totalInfluencersHired: Int!
+  totalOrders: Int!
+  totalVideosGenerated: Int!
+}

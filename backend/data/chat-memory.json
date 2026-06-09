@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "chats": {
+    "8e669cba-fc14-40da-8295-0cba1387cde0": {
+      "updatedAt": "2026-04-11T05:12:47.354Z",
+      "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+      "influencerId": "38bd1999-5377-403a-8de3-99b323609cc1",
+      "details": {
+        "clientName": "having trouble responding right now. Please try again",
+        "brandName": "““totan.ai”.”."
+      },
+      "facts": [
+        {
+          "key": "clientName",
+          "value": "having trouble responding right now. Please try again",
+          "messageId": "d2a85fca-d97b-4ca6-b5d7-995c9eeebd03",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "createdAt": "2026-04-11T04:35:38.805Z"
+        },
+        {
+          "key": "brandName",
+          "value": "totan.ai",
+          "messageId": "9fda8b9c-75f9-48da-8bed-dba0e1ce6973",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "createdAt": "2026-04-11T04:45:30.964Z"
+        },
+        {
+          "key": "brandName",
+          "value": "“totan.ai”.",
+          "messageId": "3792e60d-02c3-4661-87a2-817811cb1dc0",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "createdAt": "2026-04-11T04:45:30.984Z"
+        },
+        {
+          "key": "brandName",
+          "value": "““totan.ai”.”.",
+          "messageId": "7563685a-548b-4f05-903a-e86463741e8d",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "createdAt": "2026-04-11T04:45:58.671Z"
+        }
+      ],
+      "snippets": [
+        {
+          "messageId": "f5689370-0a41-4529-838b-8cd9f4c29341",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:24:48.191Z"
+        },
+        {
+          "messageId": "214ff849-bb65-4b40-9052-3071eaad44f7",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:29:24.958Z"
+        },
+        {
+          "messageId": "769c1818-6691-4ec9-9593-096c53d59a64",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:35:35.532Z"
+        },
+        {
+          "messageId": "803056ec-78ad-49eb-886f-17c4001493b6",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:40:11.341Z"
+        },
+        {
+          "messageId": "e8e9c9ff-367e-4de0-bcd0-53310a795c3a",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:44:54.765Z"
+        },
+        {
+          "messageId": "9fda8b9c-75f9-48da-8bed-dba0e1ce6973",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "My brand name is totan.ai",
+          "createdAt": "2026-04-11T04:45:30.964Z"
+        },
+        {
+          "messageId": "21240407-ffb0-4e23-bebd-11bd4e7e92d5",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "what is my brand name?",
+          "createdAt": "2026-04-11T04:45:58.652Z"
+        },
+        {
+          "messageId": "55a25379-035c-4231-b91b-3dd7d9c1073a",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "can you create image for my brand",
+          "createdAt": "2026-04-11T04:57:19.420Z"
+        },
+        {
+          "messageId": "16b41c98-4ce0-4892-823e-1a0a0bb13829",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "can you create image for my brand",
+          "createdAt": "2026-04-11T04:57:31.454Z"
+        },
+        {
+          "messageId": "cf12c33d-6bfd-4162-b24b-a25d26919f19",
+          "chatId": "8e669cba-fc14-40da-8295-0cba1387cde0",
+          "customerId": "83e70116-c974-4c33-88a1-614f373abaf9",
+          "role": "USER",
+          "content": "can you create image for my brand",
+          "createdAt": "2026-04-11T05:12:47.354Z"
+        }
+      ]
+    }
+  }
+}
