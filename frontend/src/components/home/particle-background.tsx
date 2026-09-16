@@ -15,6 +15,9 @@ export function ParticleBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    // Disable particle simulation on mobile (<640px) to prevent main-thread CPU contention during initial load
+    if (typeof window !== 'undefined' && window.innerWidth < 640) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -99,7 +102,7 @@ export function ParticleBackground() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 pointer-events-none"
+      className="hidden sm:block absolute inset-0 pointer-events-none"
       style={{ zIndex: 0 }}
     />
   );

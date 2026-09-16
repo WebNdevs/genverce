@@ -40,17 +40,12 @@ export function HeroSection() {
         </motion.div>
 
         {/* Main Headline */}
-        <motion.h1
-          initial={false}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-5xl sm:text-6xl lg:text-hero font-bold leading-tight mb-6"
-        >
+        <h1 className="text-5xl sm:text-6xl lg:text-hero font-bold leading-tight mb-6">
           The Future of{' '}
           <br className="hidden sm:block" />
           Influence is{' '}
           <span className="gradient-text">AI</span>
-        </motion.h1>
+        </h1>
 
         {/* Subtext */}
         <motion.p
