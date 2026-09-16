@@ -549,7 +549,7 @@ export default function EditInfluencerPage() {
             <div className="border border-border rounded-xl p-4 space-y-3 bg-surface/30 mt-4">
               <div>
                 <p className="text-sm font-semibold">API Integration Override (Optional)</p>
-                <p className="text-xs text-text-secondary">If left blank, this influencer will use the platform's default global Chat AI settings.</p>
+                <p className="text-xs text-text-secondary">If left blank, this influencer will use the platform&apos;s default global Chat AI settings.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
                 <Field label="Chat API URL" hint="Override URL (useful for proxies or compatible providers).">
@@ -557,7 +557,7 @@ export default function EditInfluencerPage() {
                     placeholder="https://api.openai.com/v1"
                     className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-brand" />
                 </Field>
-                <Field label="Chat API Key" hint="Overrides platform's API Key.">
+                <Field label="Chat API Key" hint="Overrides platform&apos;s API Key.">
                   <div className="relative">
                     <input type={showChatKey ? 'text' : 'password'} value={aiConfig.chatApiKey ?? ''} onChange={(e) => setAiConfig(prev => ({ ...prev, chatApiKey: e.target.value }))}
                       placeholder="sk-..."

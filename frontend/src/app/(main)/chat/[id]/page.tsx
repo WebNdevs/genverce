@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Send, Briefcase, Search, ArrowLeft, ChevronRight, Wifi, WifiOff, Menu, X,
-  ChevronUp, ChevronDown, Paperclip, MessageSquare, FileText, CornerUpLeft, CheckCircle,
+  Send, Briefcase, Search, ChevronRight, Menu, X,
+  ChevronUp, ChevronDown, Paperclip, FileText, CornerUpLeft, CheckCircle,
   AlertCircle, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -76,21 +76,6 @@ function injectSeparators(msgs: Message[]): MsgOrSep[] {
   return result;
 }
 
-/* ── highlight matching text ─────────────────────────────── */
-function highlight(text: string, query: string) {
-  if (!query.trim()) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase()
-          ? <mark key={i} className="bg-brand/30 text-text-primary rounded px-0.5">{part}</mark>
-          : part
-      )}
-    </>
-  );
-}
-
 function parseFileMessage(text: string) {
   const t = (text ?? '').trim();
   const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -138,9 +123,6 @@ export default function ChatPage() {
   const { notifications, markRead } = useNotificationStore();
   const influencerId = params?.id as string;
   const [markNotificationRead] = useMutation(MARK_NOTIFICATION_READ);
-  const unreadMessageCount = notifications.filter(
-    (n) => !n.read && (n.href.startsWith('/chat/') || n.href === '/messages')
-  ).length;
 
   // Mark notifications for this chat as read when entering
   useEffect(() => {
@@ -174,7 +156,6 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const chatInitialized = useRef(false);
   // Keep chatId in a ref so reconnect handler always has the latest value
   const chatIdRef = useRef<string | null>(null);
 

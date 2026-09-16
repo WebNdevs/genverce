@@ -8,7 +8,6 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, CheckCircle, DollarSign, Package, Film, Image, Edit,
   FileText, MessageCircle, CalendarDays, Layers, Truck, BadgeCheck,
-  User,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth';
 import { GET_ORDER } from '@/graphql/queries/order';
@@ -84,8 +83,9 @@ function toBriefObject(value: any): Record<string, any> {
 function toGeneratedImageInputList(list: any[]) {
   return (Array.isArray(list) ? list : [])
     .map((x: any) => {
-      const raw = x && typeof x === 'object' ? x : {};
-      const { __typename, ...rest } = raw as any;
+      const raw = x && typeof x === 'object' ? { ...x } : {};
+      delete (raw as any).__typename;
+      const rest = raw as any;
       const url = typeof rest.url === 'string' ? rest.url : String(rest.url ?? '');
       const messageId = typeof rest.messageId === 'string' ? rest.messageId : String(rest.messageId ?? '');
       const createdAt = typeof rest.createdAt === 'string' ? rest.createdAt : String(rest.createdAt ?? '');

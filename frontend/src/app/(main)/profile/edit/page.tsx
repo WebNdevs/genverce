@@ -28,8 +28,6 @@ const readonlyCls = 'w-full px-4 py-3 bg-surface border border-border rounded-lg
 export default function ProfileEditPage() {
   const router = useRouter();
   const { user, isAuthenticated, hydrated, updateUser } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (hydrated && !isAuthenticated) router.push('/login');

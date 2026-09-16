@@ -9,7 +9,6 @@ import Link from 'next/link';
 import { GET_ADMIN_CHAT } from '@/graphql/queries/chat';
 import { useAuthStore } from '@/lib/auth';
 import { connectSocket } from '@/lib/socket';
-import { toast } from '@/components/ui/toaster';
 import { Message } from '@/types';
 import { MarkdownContent } from '@/components/chat/markdown-content';
 import { ChatReplyBanner, ChatQuotedPreview } from '@/components/chat/chat-reply-ui';
@@ -44,20 +43,6 @@ function injectSeparators(msgs: Message[]): MsgOrSep[] {
   return result;
 }
 
-function highlight(text: string, query: string) {
-  if (!query.trim()) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase()
-          ? <mark key={i} className="bg-brand/30 text-text-primary rounded px-0.5">{part}</mark>
-          : part
-      )}
-    </>
-  );
-}
-
 function Avatar({ name, src, size = 10 }: { name: string; src?: string; size?: number }) {
   const s = `w-${size} h-${size}`;
   return (
@@ -72,8 +57,6 @@ export default function AdminChatDetailPage() {
   const router = useRouter();
   const chatId = params?.id as string;
   const { user, isAuthenticated, hydrated, token } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ArrowRight, Check, AlertTriangle, Shield, ShieldCheck, Zap, Clock, Sparkles,
+  ArrowLeft, ArrowRight, Check, AlertTriangle, Shield, ShieldCheck, Zap, Clock,
 } from 'lucide-react';
 import { Navbar } from '@/components/layout/navbar';
 import { GET_INFLUENCER } from '@/graphql/queries/influencer';

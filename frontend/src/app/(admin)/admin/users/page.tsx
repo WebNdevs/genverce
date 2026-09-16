@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Search, Pencil, X, Save, Trash2, RotateCcw, Users, Trash, ChevronLeft, ChevronRight, Bot, Sparkles, CheckCircle, Loader2, Briefcase } from 'lucide-react';
+import { Power, PowerOff, Search, Pencil, X, Save, Trash2, RotateCcw, Users, Trash, ChevronLeft, ChevronRight, Bot, Sparkles, CheckCircle, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth';
 import { toast } from '@/components/ui/toaster';
 import { gql } from '@apollo/client';

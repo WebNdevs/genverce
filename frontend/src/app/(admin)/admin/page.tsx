@@ -42,7 +42,6 @@ export default function AdminDashboard() {
     .filter((o: any) => ['DELIVERED', 'APPROVED'].includes(o.status))
     .reduce((sum: number, o: any) => sum + (o.price || 0), 0);
 
-  const pendingReview = orders.filter((o: any) => o.status === 'PENDING_REVIEW').length;
   const generating = orders.filter((o: any) => o.status === 'GENERATING').length;
 
   const { data: ticketsData } = useQuery(GET_ALL_TICKETS);

@@ -204,7 +204,7 @@ export default function AdminInfluencersPage() {
   useEffect(() => { setPage(1); }, [query]);
 
   const [deactivate] = useMutation(DEACTIVATE_INFLUENCER, {
-    onCompleted: (res, vars) => {
+    onCompleted: (res) => {
       toast({ title: 'Influencer deactivated', variant: 'default' });
       setPendingId(null);
       const updated = res?.deactivateInfluencer;
@@ -490,13 +490,13 @@ export default function AdminInfluencersPage() {
             <label className="block text-xs font-medium text-text-secondary mb-1">Bio</label>
             <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={2}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors resize-none" />
-            <p className="text-[11px] text-text-secondary/60 mt-1">A short description of the influencer's personality and niche (min 10 characters).</p>
+            <p className="text-[11px] text-text-secondary/60 mt-1">A short description of the influencer&apos;s personality and niche (min 10 characters).</p>
           </div>
           <div className="col-span-full">
             <label className="block text-xs font-medium text-text-secondary mb-1">System Prompt</label>
             <textarea value={form.systemPrompt} onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })} rows={4}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors resize-none" />
-            <p className="text-[11px] text-text-secondary/60 mt-1">Instructions that define this AI's personality, tone, and behavior during chats and content generation (min 20 characters).</p>
+            <p className="text-[11px] text-text-secondary/60 mt-1">Instructions that define this AI&apos;s personality, tone, and behavior during chats and content generation (min 20 characters).</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Topic</label>
@@ -517,7 +517,7 @@ export default function AdminInfluencersPage() {
           <div className="col-span-full border border-border rounded-xl p-4 space-y-3 bg-surface/30 mt-2">
             <div>
               <p className="text-sm font-semibold text-text-primary">API Integration Override (Optional)</p>
-              <p className="text-xs text-text-secondary">If left blank, this influencer will use the platform's default global Chat AI settings.</p>
+              <p className="text-xs text-text-secondary">If left blank, this influencer will use the platform&apos;s default global Chat AI settings.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
               <div>

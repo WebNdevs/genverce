@@ -4,11 +4,10 @@ import { useLayoutEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Bot, Sparkles, CheckCircle2, Clock, MessageSquare,
-  ArrowRight, Search, RefreshCw, FolderOpen, ExternalLink,
-  Zap, Layers, ShieldCheck, ChevronRight
+  Search, RefreshCw, FolderOpen,
 } from 'lucide-react';
 import { GET_MY_HIRED_AGENTS_OVERVIEW } from '@/graphql/queries/user';
 import { useAuthStore } from '@/lib/auth';
@@ -47,7 +46,7 @@ function fmtDate(iso?: string | null) {
 
 export default function MyAIAgentsPage() {
   const router = useRouter();
-  const { user, isAuthenticated, hydrated } = useAuthStore();
+  const { isAuthenticated, hydrated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
@@ -272,7 +271,6 @@ export default function MyAIAgentsPage() {
               border: 'border-brand/30',
             };
 
-            const isDelivered = agent.status === 'COMPLETED';
             const totalOrdered = agent.totalOrderedUnits || agent.totalOrders || 1;
             const totalDelivered = agent.totalDeliveredUnits || agent.completedOrders || 0;
             const pct = Math.min(100, Math.round((totalDelivered / totalOrdered) * 100));

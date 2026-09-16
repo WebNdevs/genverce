@@ -29,9 +29,7 @@ function Avatar({ name, src }: { name: string; src?: string }) {
 export default function AdminChatsPage() {
   const router = useRouter();
   const { user, isAuthenticated, hydrated } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (hydrated && (!isAuthenticated || user?.role !== 'ADMIN')) router.push('/login');
