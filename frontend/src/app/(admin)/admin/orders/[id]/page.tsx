@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, CheckCircle, DollarSign, Package, Film, Image, Edit,
   FileText, MessageCircle, CalendarDays, Layers, Truck, BadgeCheck,
-  User, Star,
+  User,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth';
 import { GET_ORDER } from '@/graphql/queries/order';

@@ -7,7 +7,7 @@ import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { InfluencerCard } from '@/components/influencer/influencer-card';
-import { GET_INFLUENCERS, GET_FILTER_OPTIONS } from '@/graphql/queries/influencer';
+import { GET_INFLUENCERS } from '@/graphql/queries/influencer';
 import { Influencer } from '@/types';
 import { useAuthStore } from '@/lib/auth';
 import AdminLayout from '@/app/(admin)/admin/layout';
@@ -129,17 +129,15 @@ export default function InfluencersPage() {
     );
   };
 
-  if (!mounted) return null;
-
-  if (user?.role === 'ADMIN') {
+  if (mounted && user?.role === 'ADMIN') {
     return (
       <AdminLayout>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
-            <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-4xl font-bold mb-3">
+            <motion.h1 initial={false} animate={{ opacity: 1, y: 0 }} className="text-4xl font-bold mb-3">
               AI <span className="gradient-text">Influencers</span>
             </motion.h1>
-            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-text-secondary text-lg">
+            <motion.p initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-text-secondary text-lg">
               Browse our curated collection of AI-powered influencers
             </motion.p>
           </div>
@@ -251,14 +249,14 @@ export default function InfluencersPage() {
           {/* Header */}
           <div className="py-10">
             <motion.h1
-              initial={{ opacity: 0, y: 20 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               className="text-4xl font-bold mb-3"
             >
               AI <span className="gradient-text">Influencers</span>
             </motion.h1>
             <motion.p
-              initial={{ opacity: 0, y: 20 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               className="text-text-secondary text-lg"
@@ -269,7 +267,7 @@ export default function InfluencersPage() {
 
           {/* Search + Filter bar */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             className="flex gap-3 mb-6"
@@ -386,7 +384,7 @@ export default function InfluencersPage() {
               {influencers.map((influencer, index) => (
                 <motion.div
                   key={influencer.id}
-                  initial={{ opacity: 0, y: 30 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
                 >

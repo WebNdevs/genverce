@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, InputType, Field } from '@nestjs/graphql';
-import { IsEmail, IsOptional, IsString, IsEnum, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsEnum, IsArray, IsBoolean } from 'class-validator';
 import { UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
 import { UserModel } from './user.model';
@@ -9,6 +9,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 import { UserStatsModel } from './user-stats.model';
+import { AdminHireAgentResult, HiredAgentInfo, UserHiredAgentsSummary } from './dto/admin-hire-agent.dto';
 
 @InputType()
 class AdminUpdateUserInput {
@@ -46,33 +47,45 @@ class CompleteOnboardingInput {
 
   @Field({ nullable: true })
   @IsOptional()
+  @IsBoolean()
   requestedCustomInfluencer?: boolean;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  website: string;
+  website?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  targetAudience: string;
+  targetAudience?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  tone: string;
+  tone?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  industry: string;
+  industry?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  goal: string;
+  goal?: string;
 
-  @Field(() => [String])
-  platforms: string[];
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  platforms?: string[];
 
-  @Field(() => [String])
-  contentTypes: string[];
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  contentTypes?: string[];
 }
 
 @Resolver(() => UserModel)
@@ -179,5 +192,28 @@ export class UserResolver {
   @Roles(Role.ADMIN)
   async restoreUser(@Args('userId') userId: string) {
     return this.userService.restore(userId);
+  }
+
+  @Mutation(() => AdminHireAgentResult)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async adminHireAgentForUser(
+    @Args('userId') userId: string,
+    @Args('influencerId') influencerId: string,
+  ) {
+    return this.userService.adminHireAgentForUser(userId, influencerId);
+  }
+
+  @Query(() => [HiredAgentInfo])
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async adminUserHiredAgents(@Args('userId') userId: string) {
+    return this.userService.getUserHiredAgents(userId);
+  }
+
+  @Query(() => UserHiredAgentsSummary)
+  @UseGuards(JwtAuthGuard)
+  async myHiredAgentsOverview(@CurrentUser() user: any) {
+    return this.userService.getMyHiredAgentsOverview(user.id);
   }
 }

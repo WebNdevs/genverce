@@ -113,3 +113,17 @@ export const GET_MY_CHATS = gql`
     }
   }
 `;
+
+export const GET_CHAT_NOTES = gql`
+  query ChatNotes($chatId: String!) {
+    chatNotes(chatId: $chatId) {
+      id
+      chatId
+      userId
+      title
+      content
+      createdAt
+      updatedAt
+    }
+  }
+`;

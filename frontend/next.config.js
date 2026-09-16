@@ -1,12 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.amazonaws.com' },
@@ -19,9 +12,21 @@ const nextConfig = {
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  transpilePackages: ['@apollo/client'],
   // Allow large video files
   experimental: {
     serverComponentsExternalPackages: [],
+  },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Prevent ChunkLoadError timeouts during heavy initial compilation on Windows
+      config.output = config.output || {};
+      config.output.chunkLoadTimeout = 300000;
+    }
+    return config;
   },
 };
 

@@ -4,11 +4,10 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Mail, Building2, CalendarDays, ChevronDown, ShoppingCart, Video, Users } from 'lucide-react';
+import { User, Building2, CalendarDays, ChevronDown } from 'lucide-react';
 import { useQuery } from '@apollo/client';
 import { useAuthStore } from '@/lib/auth';
 import { GET_ME } from '@/graphql/queries/user';
-import { GET_DASHBOARD_DATA } from '@/graphql/queries/order';
 
 export default function ProfileOverviewPage() {
   const router = useRouter();
@@ -21,17 +20,15 @@ export default function ProfileOverviewPage() {
 
   useEffect(() => {
     if (hydrated && !isAuthenticated) router.push('/login');
-  }, [hydrated, isAuthenticated]);
+  }, [hydrated, isAuthenticated, router]);
 
   const { data: meData } = useQuery(GET_ME);
-  const { data } = useQuery(GET_DASHBOARD_DATA, { skip: !isAuthenticated });
 
   const me = meData?.me ?? (mounted ? user : null);
-  const stats = data?.myStats ?? { totalOrders: 0, totalVideosGenerated: 0, totalInfluencersHired: 0 };
 
   return (
     <>
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="mb-6">
         <h1 className="text-2xl font-semibold">My <span className="gradient-text">Profile</span></h1>
         <p className="text-sm text-text-secondary mt-1">Your account overview</p>
       </motion.div>

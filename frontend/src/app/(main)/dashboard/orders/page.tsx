@@ -5,11 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Download, Ticket, Star, CheckCircle, XCircle, Clock, Loader, Zap } from 'lucide-react';
+import { Download, Ticket, Star, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
 import { GET_MY_ORDERS } from '@/graphql/queries/order';
 import { CREATE_REVIEW } from '@/graphql/mutations/ticket';
 import { useAuthStore } from '@/lib/auth';
-import { Order, OrderStatus } from '@/types';
+import { Order } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 
@@ -63,7 +63,7 @@ function OrdersPage() {
 
   return (
     <div className="py-2">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="mb-8">
             <h1 className="text-3xl font-bold mb-1">My <span className="gradient-text">Orders</span></h1>
             <p className="text-text-secondary">View, download and manage all your video orders</p>
           </motion.div>
@@ -110,11 +110,18 @@ function OrdersPage() {
                           <div className="mt-3">
                             <div className="flex justify-between text-xs text-text-secondary mb-1">
                               <span>Progress</span>
-                              <span>{order.videosDelivered}/{order.videosOrdered} videos</span>
+                              <span>
+                                {order.videosDelivered}/{order.videosOrdered}{' '}
+                                {(order.influencer as any)?.serviceType === 'POST_CREATION'
+                                  ? 'posts'
+                                  : (order.influencer as any)?.serviceType === 'IMAGE_CREATION'
+                                    ? 'images'
+                                    : 'videos'}
+                              </span>
                             </div>
                             <div className="h-1.5 bg-background rounded-full overflow-hidden">
                               <div className="h-full bg-gradient-brand rounded-full transition-all"
-                                style={{ width: `${(order.videosDelivered / order.videosOrdered) * 100}%` }} />
+                                style={{ width: `${order.videosOrdered > 0 ? Math.min(100, Math.round((order.videosDelivered / order.videosOrdered) * 100)) : 0}%` }} />
                             </div>
                           </div>
                         )}

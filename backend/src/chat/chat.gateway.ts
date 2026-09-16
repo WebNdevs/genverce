@@ -35,6 +35,7 @@ interface AdminSendMessagePayload {
     credentials: true,
   },
   namespace: '/chat',
+  transports: ['websocket', 'polling'],
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -157,10 +158,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  private isGreeting(text: string): boolean {
+    const t = (text ?? '').trim().toLowerCase().replace(/[^\w\s]/g, '');
+    if (!t) return false;
+
+    const exactGreetings = new Set([
+      'hi', 'hey', 'heyy', 'heyyy', 'hello', 'hola', 'howdy', 'greetings',
+      'good morning', 'good afternoon', 'good evening', 'good day',
+      'whats up', 'whatsup', 'sup', 'yo', 'hi there', 'hello there', 'hey there',
+      'how are you', 'how are u', 'hows it going', 'how is it going',
+      'nice to meet you', 'pleased to meet you'
+    ]);
+
+    if (exactGreetings.has(t)) return true;
+    const greetingPattern = /^(hi|hey+|hello|hola|howdy|greetings|good morning|good afternoon|good evening|whats up|sup|yo|hi there|hello there)\b/i;
+    return t.length <= 30 && greetingPattern.test(t);
+  }
+
   private compactChatMessages(messages: Array<{ role: 'user' | 'assistant'; content: string; imageUrl?: string }>) {
-    const maxMessages = 14;
-    const maxCharsPerMessage = 1800;
-    const maxTotalChars = 14000;
+    const maxMessages = 16;
+    const maxCharsPerMessage = 2000;
+    const maxTotalChars = 16000;
 
     const trimmed = messages
       .slice(-maxMessages)
@@ -180,8 +198,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       budget -= cost;
     }
     out.reverse();
-    const firstUserIdx = out.findIndex((m) => m.role === 'user');
-    return firstUserIdx >= 0 ? out.slice(firstUserIdx) : out;
+    return out;
   }
 
   private getDirectMemoryReply(question: string, details: any, influencerName?: string) {
@@ -199,63 +216,145 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const isBrandQ =
-      /\bwhat('?s|\s+is)\s+(my|our)\s+brand\s+name\b/.test(q) ||
-      /\bwhat\s+do\s+you\s+have\s+as\s+(my|our)\s+brand\b/.test(q) ||
-      /\bbrand\s+name\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:my|our)\s+brand(?:\s+name)?|what\s+do\s+you\s+have\s+as\s+(?:my|our)\s+brand|do\s+you\s+know\s+(?:my|our)\s+brand(?:\s+name)?)\b/.test(q);
     if (isBrandQ) {
       const v = typeof details?.brandName === 'string' ? details.brandName.trim() : '';
       return v ? `Your brand name is “${v}”.` : `I don’t think you’ve told me your brand name yet—what should I call it?`;
     }
 
     const isClientNameQ =
-      /\bwhat('?s|\s+is)\s+my\s+name\b/.test(q) ||
-      /\bwho\s+am\s+i\b/.test(q) ||
-      /\bwhat\s+do\s+you\s+call\s+me\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+my\s+name|who\s+am\s+i|what\s+do\s+you\s+call\s+me|do\s+you\s+know\s+my\s+name)\b/.test(q);
     if (isClientNameQ) {
       const v = typeof details?.clientName === 'string' ? details.clientName.trim() : '';
       return v ? `You told me your name is ${v}.` : `I don’t think I caught your name yet—what should I call you?`;
     }
 
     const isProductQ =
-      /\bwhat('?s|\s+is)\s+(my|our)\s+product\s+name\b/.test(q) ||
-      /\bwhat('?s|\s+is)\s+(my|our)\s+app\s+called\b/.test(q) ||
-      /\bproduct\s+name\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:my|our)\s+product(?:\s+name)?|what('?s|\s+is)\s+(?:my|our)\s+app\s+called|do\s+you\s+know\s+(?:my|our)\s+product(?:\s+name)?)\b/.test(q);
     if (isProductQ) {
       const v = typeof details?.productName === 'string' ? details.productName.trim() : '';
       return v ? `Your product name is “${v}”.` : `I don’t think you’ve shared your product name yet—what is it?`;
     }
 
     const isWebsiteQ =
-      /\bwhat('?s|\s+is)\s+(my|our)\s+(website|site|url)\b/.test(q) ||
-      /\bwebsite\b/.test(q) ||
-      /\bsite\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:my|our)\s+(?:website|site|url|domain)|do\s+you\s+know\s+(?:my|our)\s+(?:website|site|url|domain)|what\s+(?:is|was)\s+(?:my|our)\s+(?:website|site|url)|tell\s+me\s+(?:my|our)\s+(?:website|site|url))\b/.test(q);
     if (isWebsiteQ) {
       const v = typeof details?.website === 'string' ? details.website.trim() : '';
       return v ? `Your website is ${v}.` : `I don’t have your website saved yet—what’s the link?`;
     }
 
     const isEmailQ =
-      /\bwhat('?s|\s+is)\s+my\s+email\b/.test(q) ||
-      /\bemail\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:my|our)\s+email|do\s+you\s+know\s+(?:my|our)\s+email|what\s+email\s+do\s+you\s+have)\b/.test(q);
     if (isEmailQ) {
       const v = typeof details?.clientEmail === 'string' ? details.clientEmail.trim() : '';
       return v ? `Your email is ${v}.` : `I don’t have your email saved—what should I use?`;
     }
 
     const isAudienceQ =
-      /\btarget\s+audience\b/.test(q) ||
-      /\bwho\s+(is|are)\s+(my|our)\s+audience\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:my|our)\s+target\s+audience|who\s+(?:is|are)\s+(?:my|our)\s+audience|do\s+you\s+know\s+(?:my|our)\s+(?:target\s+)?audience)\b/.test(q);
     if (isAudienceQ) {
       const v = typeof details?.targetAudience === 'string' ? details.targetAudience.trim() : '';
       return v ? `Your target audience is ${v}.` : `I don’t think you’ve described your target audience yet—who are you trying to reach?`;
     }
 
     const isToneQ =
-      /\bwhat('?s|\s+is)\s+(the\s+)?(tone|style|voice)\b/.test(q) ||
-      /\bpreferred\s+tone\b/.test(q);
+      /\b(?:what('?s|\s+is)\s+(?:the|my|our)\s+(?:tone|style|voice)|do\s+you\s+know\s+(?:the|my|our)\s+tone)\b/.test(q);
     if (isToneQ) {
       const v = typeof details?.tone === 'string' ? details.tone.trim() : '';
       return v ? `You said you want the tone to be ${v}.` : `What tone do you want—more friendly, bold, premium, or something else?`;
+    }
+
+    // Requirements & Specs query
+    const isRequirementsQ =
+      /\b(?:what('?s|\s+is|\s+are)\s+(?:my|our|the)\s+(?:requirements?|specs?|specifications?|video specs?|project specs?)|what\s+are\s+the\s+requirements|do\s+you\s+know\s+(?:my|our)\s+requirements)\b/.test(q);
+    if (isRequirementsQ) {
+      const reqs = details?.requirements && typeof details.requirements === 'object' ? details.requirements : null;
+      if (reqs && Object.keys(reqs).length > 0) {
+        const items = Object.entries(reqs).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+        return `Here are the project requirements I have saved for you:\n${items}`;
+      }
+      return `I don’t have specific requirements saved yet—what video length, format, or platforms do you need?`;
+    }
+
+    // Preferences & Guidelines query
+    const isPreferencesQ =
+      /\b(?:what('?s|\s+is|\s+are)\s+(?:my|our)\s+(?:preferences?|guidelines?|rules?|constraints?|do'?s and don'?ts)|what\s+are\s+(?:my|our)\s+preferences|do\s+you\s+know\s+(?:my|our)\s+preferences)\b/.test(q);
+    if (isPreferencesQ) {
+      const prefs = details?.preferences && typeof details.preferences === 'object' ? details.preferences : null;
+      if (prefs && Object.keys(prefs).length > 0) {
+        const items = Object.entries(prefs).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+        return `Here are your saved preferences and guidelines:\n${items}`;
+      }
+      return `I don't have special preferences or constraints recorded yet. Let me know your preferred style, tone, or anything you'd like me to avoid!`;
+    }
+
+    // Decisions & Approvals query
+    const isDecisionsQ =
+      /\b(?:what\s+did\s+we\s+(?:decide|approve|choose|agree on)|what('?s|\s+is)\s+(?:the\s+)?(?:approved|selected|chosen)\s+(?:concept|script|approach|hook|direction|plan)|what\s+are\s+our\s+decisions)\b/.test(q);
+    if (isDecisionsQ) {
+      const decs = details?.decisions && typeof details.decisions === 'object' ? details.decisions : null;
+      if (decs && Object.keys(decs).length > 0) {
+        const items = Object.entries(decs).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+        return `Here are the decisions and approvals recorded in our project:\n${items}`;
+      }
+      return `We haven't finalized any specific decisions yet. Which concept or direction would you like to approve?`;
+    }
+
+    // Technical tools & stack query
+    const isTechQ =
+      /\b(?:what('?s|\s+is|\s+are)\s+(?:my|our|the)\s+(?:tech stack|tools?|integrations?|software|platforms?)|what\s+tools\s+do\s+you\s+have)\b/.test(q);
+    if (isTechQ) {
+      const tech = details?.technicalContext && typeof details.technicalContext === 'object' ? details.technicalContext : null;
+      if (tech && Object.keys(tech).length > 0) {
+        const items = Object.entries(tech).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+        return `Here are the tools and technical integrations I have on file:\n${items}`;
+      }
+      return `I don't have your tech stack or tools recorded yet—are you using Shopify, WordPress, Figma, or any other platforms?`;
+    }
+
+    // Tasks & action items query
+    const isTasksQ =
+      /\bwhat('?s|\s+is|\s+are)\s+(the\s+)?(pending tasks?|action items?|tasks?|next steps?|milestones?)\b/.test(q) ||
+      /\bwhat\s+(?:tasks\s+(?:are\s+)?(?:pending|active|open)|action items|next steps)\b/.test(q) ||
+      /\bwhat\s+(do\s+i\s+need\s+to\s+send|am\s+i\s+sending|should\s+i\s+send)\b/.test(q);
+    if (isTasksQ) {
+      const tasks = Array.isArray(details?.tasks) ? details.tasks : [];
+      if (tasks.length > 0) {
+        const items = tasks.map((t: any) => `• [${String(t.status || 'pending').toUpperCase()}] ${t.task}`).join('\n');
+        return `Here are our tracked project tasks:\n${items}`;
+      }
+      return `There are currently no pending tasks on file. Let me know if you need anything prepared!`;
+    }
+
+    // Full memory summary query
+    const isGeneralMemoryQ =
+      /\bwhat\s+do\s+you\s+remember\s+(about\s+(me|us|our\s+brand|our\s+project|this\s+project))\b/.test(q) ||
+      /\bwhat\s+information\s+do\s+you\s+have\s+about\s+(me|us|our\s+brand)\b/.test(q);
+    if (isGeneralMemoryQ) {
+      const parts: string[] = [];
+      if (details.brandName) parts.push(`• Brand: ${details.brandName}`);
+      if (details.productName) parts.push(`• Product: ${details.productName}`);
+      if (details.website) parts.push(`• Website: ${details.website}`);
+      if (details.targetAudience) parts.push(`• Audience: ${details.targetAudience}`);
+      if (details.tone) parts.push(`• Tone: ${details.tone}`);
+
+      if (details.requirements && typeof details.requirements === 'object') {
+        const rList = Object.entries(details.requirements).map(([k, v]) => `${k}: ${v}`).join(', ');
+        if (rList) parts.push(`• Requirements: ${rList}`);
+      }
+      if (details.preferences && typeof details.preferences === 'object') {
+        const pList = Object.entries(details.preferences).map(([k, v]) => `${k}: ${v}`).join(', ');
+        if (pList) parts.push(`• Preferences: ${pList}`);
+      }
+      if (details.decisions && typeof details.decisions === 'object') {
+        const dList = Object.entries(details.decisions).map(([k, v]) => `${k}: ${v}`).join(', ');
+        if (dList) parts.push(`• Decisions: ${dList}`);
+      }
+
+      if (parts.length > 0) {
+        return `Here is a summary of what I remember about our project:\n${parts.join('\n')}`;
+      }
+      return `I don't have specific details stored yet. Tell me about your brand, product, or requirements and I will keep track of them!`;
     }
 
     return null;
@@ -340,13 +439,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private detectIntent(content: string): 'image' | 'post' | 'video' | 'chat' {
     const text = (content || '').toLowerCase().trim();
 
-    // IMAGE REQUESTS
-    if (
-      /\b(image|picture|photo|creative|design|graphic|visual|poster|banner|flyer|thumbnail|logo)\b/.test(text) ||
-      /\b(post image|social media image|instagram image|facebook image|linkedin image)\b/.test(text) ||
-      /\b(create|generate|make|design)\b.*\b(image|creative|poster|banner|thumbnail|logo)\b/.test(text)
-    ) {
+    // Check if the user only wants an image/graphic specifically for a post, rather than writing a post
+    const onlyWantsImageForPost =
+      /\b(create|generate|make|design)\b.*\b(image|photo|picture|graphic|banner)\b.*\b(for\s+(a|the|my)?\s*post)\b/i.test(text) ||
+      /\b(post\s+image|post\s+photo|post\s+picture|post\s+banner|post\s+graphic)\b/i.test(text);
+
+    if (onlyWantsImageForPost) {
       return 'image';
+    }
+
+    // CONTENT WRITING / POST REQUESTS
+    // If the user requests a post, blog, article, caption, newsletter, even with an image (e.g. "create a post with an image")
+    const hasPostKeywords =
+      (/\b(caption|blog|article|newsletter|linkedin post|social post)\b/.test(text) ||
+       /\b(post|posts)\b/.test(text)) &&
+      !/\b(poster|flyer)\b/.test(text);
+
+    if (hasPostKeywords) {
+      return 'post';
     }
 
     // VIDEO REQUESTS
@@ -356,11 +466,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return 'video';
     }
 
-    // CONTENT WRITING REQUESTS
+    // IMAGE REQUESTS
     if (
-      /\b(caption|blog|article|newsletter|linkedin post|social post)\b/.test(text)
+      /\b(image|picture|photo|creative|design|graphic|visual|poster|banner|flyer|thumbnail|logo)\b/.test(text) ||
+      /\b(social media image|instagram image|facebook image|linkedin image)\b/.test(text) ||
+      /\b(create|generate|make|design)\b.*\b(image|creative|poster|banner|thumbnail|logo)\b/.test(text)
     ) {
-      return 'post';
+      return 'image';
     }
 
     return 'chat';
@@ -432,6 +544,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private isPosterRequest(content: string): boolean {
     const lower = (content ?? '').toLowerCase();
     return /\bposter(s)?\b/.test(lower) || /\bflyer(s)?\b/.test(lower);
+  }
+
+  private isCreationRequest(content: string): boolean {
+    if (!content) return false;
+    const lower = content.toLowerCase().trim();
+
+    if (
+      this.isPricingQuery(lower) ||
+      this.isGreeting(lower) ||
+      this.isAddressQuery(lower) ||
+      this.isSizeQuestionQuery(lower)
+    ) {
+      return false;
+    }
+
+    const detected = this.detectIntent(lower);
+    if (detected !== 'chat') return true;
+
+    if (
+      this.isImageRequest(lower) ||
+      this.isPosterRequest(lower) ||
+      this.isVideoRequest(lower) ||
+      this.isPostRequest(lower)
+    ) {
+      return true;
+    }
+
+    const creationVerbs =
+      /\b(create|make|generate|design|write|produce|draft|compose|render|build|craft|prepare|develop|give\s+me|provide|suggest|come\s+up\s+with|put\s+together|do)\b/i;
+    const creationNouns =
+      /\b(post|posts|poster|posters|flyer|flyers|banner|banners|image|images|picture|pictures|photo|photos|video|videos|reel|reels|shorts|script|scripts|ad|ads|advert|advertisement|creative|content|caption|captions|article|articles|blog|blogs|campaign|campaigns|logo|thumbnail|visual|graphic|graphics|copy|slogan|tagline|hook|something|one)\b/i;
+
+    if (creationVerbs.test(lower) && creationNouns.test(lower)) return true;
+
+    if (
+      /\b(can\s+you|please|i\s+want\s+you\s+to|i\s+need\s+you\s+to|could\s+you|help\s+me)\s+(create|make|generate|design|write|produce|draft|craft|prepare|build)\b/i.test(
+        lower,
+      )
+    ) {
+      return true;
+    }
+
+    if (/\b(give\s+me\s+a|show\s+me\s+a|send\s+me\s+a|share\s+a)\s+(post|caption|image|video|script|ad|poster|graphic)\b/i.test(lower)) {
+      return true;
+    }
+
+    return false;
   }
 
   private parseNumberWord(v: string): number | null {
@@ -671,6 +830,132 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
   }
 
+  private extractPostFromContent(content: string, imageUrl?: string, defaultTopic?: string): any | null {
+    if (!content || typeof content !== 'string') return null;
+    const text = content.trim();
+
+    const cleanStr = (s?: string | null) => (s ? s.replace(/^[*_~`\s]+|[*_~`\s]+$/g, '').trim() : '');
+
+    // 1. Strict POST format: POST / **POST** with Title: ... Description: ... Hashtags: ... Image: ...
+    const titleMatch = text.match(/(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?Title(?:\*\*)?:(?:\*\*)?\s*([^\n]+)/i);
+    const descMatch = text.match(/(?:^|\n)\s*(?:\*\*)?(?:Description|Caption|Content|Body)(?:\*\*)?:(?:\*\*)?\s*([\s\S]+?)(?=(?:\n\s*(?:\*\*)?(?:Hashtags?|Tags?|Image|Prompt)(?:\*\*)?:|\n\s*---|(?:\n\s*(?:#{1,4}|\*\*)\s*POST)|$))/i);
+    const hashMatch = text.match(/(?:^|\n)\s*(?:\*\*)?(?:Hashtags?|Tags?)(?:\*\*)?:(?:\*\*)?\s*([^\n]+)/i);
+    const imgMatch = text.match(/(?:^|\n)\s*(?:\*\*)?(?:Image|Visual|Prompt)(?:\*\*)?:(?:\*\*)?\s*([^\n]+)/i);
+
+    if (titleMatch && descMatch) {
+      const title = cleanStr(titleMatch[1]);
+      const description = cleanStr(descMatch[1]);
+      const hashtagsRaw = hashMatch ? cleanStr(hashMatch[1]) : '';
+      const hashtags = hashtagsRaw
+        ? (hashtagsRaw.match(/#[a-zA-Z0-9_]+/g) || hashtagsRaw.split(/\s+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`)))
+        : (description.match(/#[a-zA-Z0-9_]+/g) || []);
+
+      const imgLine = imgMatch ? cleanStr(imgMatch[1]) : '';
+      const isHallucinatedOrPlaceholder =
+        !imgLine ||
+        imgLine.startsWith('http://localhost') ||
+        imgLine.startsWith('http://127.0.0.1') ||
+        /generated-\d+/.test(imgLine) ||
+        /\[image generated/i.test(imgLine) ||
+        imgLine.toLowerCase().includes('generating image') ||
+        imgLine.toLowerCase().includes('now generating');
+
+      const extractedImg = imageUrl || null;
+      const imagePrompt =
+        (!isHallucinatedOrPlaceholder && !imgLine.startsWith('http'))
+          ? imgLine
+          : null;
+
+      const ctaMatch = description.match(/(?:Visit(?:\s+us)?(?:\s+at)?\s+(?:https?:\/\/[^\s]+|[a-zA-Z0-9.-]+\.[a-z]{2,})[^\n]*|Contact us[^\n]*|Call us[^\n]*|Sign up[^\n]*)/i);
+      const callToAction = ctaMatch ? ctaMatch[0].trim() : null;
+
+      return {
+        id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        caption: description,
+        content: description,
+        hashtags,
+        imageUrl: extractedImg || null,
+        imagePrompt: imagePrompt || null,
+        topic: title || defaultTopic || 'General',
+        callToAction,
+        platforms: ['Blog', 'LinkedIn', 'Website'],
+        createdAt: new Date().toISOString(),
+        delivered: true,
+      };
+    }
+
+    // 2. Emoji format: 📝 **[Title]**\n\n[Caption]\n\n[Hashtags]
+    const emojiMatch = text.match(/📝\s*\*\*([^*]+)\*\*\s*\n+([\s\S]+?)(?=(?:\n+#[a-zA-Z0-9_\s#]+|\n\s*---|$))/i);
+    if (emojiMatch) {
+      const title = cleanStr(emojiMatch[1]);
+      const caption = cleanStr(emojiMatch[2]);
+      const hashtags = text.match(/#[a-zA-Z0-9_]+/g) || [];
+      return {
+        id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        caption,
+        content: caption,
+        hashtags,
+        imageUrl: imageUrl || null,
+        imagePrompt: null,
+        topic: defaultTopic || title,
+        callToAction: null,
+        platforms: ['Blog', 'LinkedIn', 'Website'],
+        createdAt: new Date().toISOString(),
+        delivered: true,
+      };
+    }
+
+    // 4. Delimited or Markdown Header format (e.g. "### Title\n\nBody..." or between "---")
+    const headerMatch = text.match(/(?:^|\n)(?:---\s*\n+)?(?:#{1,4}\s+|\*\*([^*]+)\*\*\s*\n+)([^\n*#]+)(?:\n+)([\s\S]+?)(?:\n+---|\n+(?:Feel free|Let me know|Hope this helps)|$)/i);
+    if (headerMatch) {
+      const rawTitle = (headerMatch[1] || headerMatch[2] || '').trim().replace(/^\*\*|\*\*$/g, '');
+      let body = (headerMatch[3] || '').trim();
+      body = body.replace(/\n*---[\s\S]*$/, '').replace(/\n*(?:Feel free|Let me know|Hope this helps)[\s\S]*$/i, '').trim();
+
+      if (rawTitle.length >= 3 && body.length >= 40) {
+        const hashtags = body.match(/#[a-zA-Z0-9_]+/g) || [];
+        return {
+          id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          title: rawTitle,
+          caption: body,
+          content: body,
+          hashtags,
+          imageUrl: imageUrl || null,
+          topic: defaultTopic || rawTitle,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    // 5. General Draft Post match (e.g. "Here’s a draft for your...:\n\n[Title or Content]")
+    const draftMatch = text.match(/(?:Here(?:’|')s\s+(?:a\s+)?(?:draft\s+for\s+your\s+)?(?:website\s+|social\s+)?post[^:]*:\s*\n+)([\s\S]+)/i);
+    if (draftMatch) {
+      const draftBody = draftMatch[1].trim();
+      const subHeader = draftBody.match(/(?:---\s*\n+)?(?:#{1,4}\s+|\*\*([^*]+)\*\*\s*\n+)?([^\n]+)\n+([\s\S]+)/);
+      if (subHeader) {
+        const title = (subHeader[1] || subHeader[2] || '').replace(/^[#*\s-]+|[#*\s-]+$/g, '').trim();
+        let body = (subHeader[3] || '').replace(/\n*---[\s\S]*$/, '').replace(/\n*(?:Feel free|Let me know|Hope this helps)[\s\S]*$/i, '').trim();
+        if (title.length >= 3 && body.length >= 30) {
+          const hashtags = body.match(/#[a-zA-Z0-9_]+/g) || [];
+          return {
+            id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title,
+            caption: body,
+            content: body,
+            hashtags,
+            imageUrl: imageUrl || null,
+            topic: defaultTopic || title,
+            createdAt: new Date().toISOString(),
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
   private isDesignFeedback(content: string, hasImage: boolean): boolean {
     if (!hasImage) return false;
     const lower = (content ?? '').toLowerCase();
@@ -859,6 +1144,83 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (isBanner) return { asset: 'banner 1920x600', assumed: true };
 
     return null;
+  }
+
+  private async buildRelevantImagePrompt(
+    post: { title: string; caption?: string; content?: string; topic?: string },
+    userPrompt: string,
+    candidatePrompt?: string | null,
+    aiConfig?: any,
+  ): Promise<string> {
+    const title = (post.title || '').replace(/^[*#\s]+|[*#\s]+$/g, '').trim();
+    const content = (post.caption || post.content || '').replace(/[*#]/g, ' ').trim();
+    const topic = (post.topic || title).replace(/^[*#\s]+|[*#\s]+$/g, '').trim();
+
+    // 1. Try to generate a dedicated, topic-specific prompt using the AI model
+    try {
+      const systemPrompt =
+        `You are a visual creative director. Given a blog post's title, topic, and summary, write a single concise, vivid image generation prompt (35-60 words) for DALL-E / GPT-Image.\n` +
+        `Strict Rules:\n` +
+        `- The image must DIRECTLY visualize the specific topic, setting, and industry of this exact blog post.\n` +
+        `- Incorporate key visual subjects, environment, lighting, and composition related to the post.\n` +
+        `- NEVER mention "blog post", "article", "caption", or metadata words in the prompt.\n` +
+        `- NEVER generate text inside the image, letters, typography, watermarks, or abstract generic placeholders.\n` +
+        `- Output ONLY the final image prompt text without quotes, markdown, or introduction.`;
+
+      const userContext =
+        `Blog Post Title: "${title}"\n` +
+        `Topic: "${topic}"\n` +
+        `User Request: "${userPrompt.slice(0, 150)}"\n` +
+        `Post Summary & Key Points:\n${content.slice(0, 450)}`;
+
+      const aiGeneratedPrompt = await this.aiService.generateResponse(
+        systemPrompt,
+        [{ role: 'user' as const, content: userContext }],
+        120,
+        aiConfig ?? undefined,
+      );
+
+      const cleanedPrompt = aiGeneratedPrompt
+        .replace(/^["'`]|["'`]$/g, '')
+        .replace(/^(Prompt|Image Prompt):/i, '')
+        .trim();
+
+      if (
+        cleanedPrompt &&
+        cleanedPrompt.length > 25 &&
+        !cleanedPrompt.toLowerCase().includes('blog post title') &&
+        !cleanedPrompt.toLowerCase().includes('user request')
+      ) {
+        return cleanedPrompt;
+      }
+    } catch (err) {
+      console.warn('[ChatGateway] Error generating AI image prompt, using contextual builder fallback:', err);
+    }
+
+    // 2. Check candidate prompt if already provided and descriptive
+    const isBadPrompt =
+      !candidatePrompt ||
+      candidatePrompt.length < 25 ||
+      candidatePrompt.startsWith('http') ||
+      candidatePrompt.startsWith('[') ||
+      candidatePrompt.toLowerCase().includes('image attached') ||
+      candidatePrompt.toLowerCase().includes('generating image') ||
+      candidatePrompt.toLowerCase().includes('now generating') ||
+      candidatePrompt.toLowerCase().includes('placeholder');
+
+    if (!isBadPrompt && candidatePrompt) {
+      return `${candidatePrompt.trim()}. High quality, detailed, modern aesthetic, clean composition, cinematic lighting, 8k resolution.`;
+    }
+
+    // 3. Contextual rule-based builder guaranteeing title, topic, and key themes are included
+    const keyThemes = content
+      .split(/(?:\. |\n)+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 25 && !s.startsWith('http') && !s.toLowerCase().includes('contact us') && !s.toLowerCase().includes('visit us'))
+      .slice(0, 2)
+      .join('. ');
+
+    return `Professional editorial visual illustration directly representing: "${title}". Core topic: ${topic}. Key context: ${keyThemes || title}. Modern cinematic lighting, vibrant clean composition, photorealistic 8k detail, professional aesthetic.`;
   }
 
   private async generateImageWithReview(
@@ -1051,7 +1413,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return `• ${p.name} — ${this.fmtUsd(p.price)}${suffix}${details ? ` (${details})` : ''}`;
     });
 
-    return `Here are my current packages:\n${lines.join('\n')}\n\nIf you tell me what you need, I can point you to the best option.`;
+    return `Here are my current packages:\n${lines.join('\n')}\n\nYou can click the **Hire** button above or select a package on my profile to get started!`;
+  }
+
+  private parseReplyMetadata(content: string) {
+    const raw = (content ?? '').trim();
+    const match = raw.match(/^\[reply(?::([a-zA-Z0-9_-]+))?(?::([^\]\n]+))?\]([\s\S]*?)\[\/reply\](?:\r?\n\r?\n|\r?\n)?/i);
+    if (!match) {
+      return {
+        hasReply: false,
+        messageId: undefined as string | undefined,
+        senderName: '',
+        quotedContent: '',
+        userText: raw,
+      };
+    }
+    return {
+      hasReply: true,
+      messageId: match[1] || undefined,
+      senderName: (match[2] || '').trim() || 'previous message',
+      quotedContent: (match[3] || '').trim(),
+      userText: raw.slice(match[0].length).trim(),
+    };
   }
 
   private isAddressQuery(content: string): boolean {
@@ -1261,6 +1644,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const message = await this.chatService.addMessage(data.chatId, 'ASSISTANT', data.content);
     this.server.to(data.chatId).emit('newMessage', message);
 
+    // Automatically add generated post to the client's order if message contains a post
+    const extractedPost = this.extractPostFromContent(data.content);
+    if (extractedPost) {
+      try {
+        await this.chatService.saveGeneratedPostToProject(data.chatId, extractedPost);
+      } catch (postErr) {
+        console.error('[ChatGateway] Failed to save admin post to order:', postErr);
+      }
+    }
+
     const meta = await this.chatService.getChatMeta(data.chatId);
     if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
       const preview = data.content.length > 120 ? data.content.slice(0, 120) + '…' : data.content;
@@ -1332,14 +1725,59 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const incoming = (data.content ?? '').trim();
+      const meta = await this.chatService.getChatMeta(data.chatId);
+      const socketUserId = (client.data as any)?.userId;
+      const payloadUserId = (data as any)?.userId;
+      const resolvedCustomerId = meta?.customerId || payloadUserId || socketUserId;
+      const influencerId = data.influencerId || meta?.influencerId;
 
-      if (incoming && this.isPricingQuery(incoming)) {
+      let usageInfo = {
+        isHired: false,
+        hasRemainingUsage: false,
+        remainingUnits: 0,
+        totalOrderedUnits: 0,
+        totalDeliveredUnits: 0,
+        activeOrdersCount: 0,
+        completedOrdersCount: 0,
+      };
+      if (resolvedCustomerId && influencerId) {
+        usageInfo = await this.chatService.getInfluencerUsageAndHireStatus(resolvedCustomerId, influencerId);
+      }
+
+      const isHired = usageInfo.isHired;
+      const hasRemainingUsage = usageInfo.hasRemainingUsage;
+      const remainingUnits = usageInfo.remainingUnits;
+      const totalOrderedUnits = usageInfo.totalOrderedUnits;
+      const totalDeliveredUnits = usageInfo.totalDeliveredUnits;
+
+      const lowerIncoming = incoming.toLowerCase();
+      const isCheckingHireStatus =
+        /\b(already\s+hired|hired\s+you|check\s+(my\s+)?(hire|status|order)|am\s+i\s+hired|did\s+i\s+hire)\b/i.test(lowerIncoming);
+
+      if (isCheckingHireStatus) {
+        const hasTask = /\b(create|make|generate|post|image|video|script|design|write|poster)\b/i.test(lowerIncoming);
+        if (!hasTask) {
+          let statusReply = '';
+          if (isHired && hasRemainingUsage) {
+            statusReply = `Yes! You have hired me for this project and have ${remainingUnits} unused credit${remainingUnits === 1 ? '' : 's'}/quantity available (${totalDeliveredUnits}/${totalOrderedUnits} completed). I'm ready to use it and complete your request. What would you like me to create or help you with?`;
+          } else if (isHired && !hasRemainingUsage) {
+            statusReply = `You have hired me for this project, but your available quantity/credits have been fully used (${totalDeliveredUnits}/${totalOrderedUnits} completed). I cannot create anything further until additional quantity is purchased. Please add more usage for your next work using the **Add Usage** button above! Since your Project Brief is already saved, you will be taken directly to package selection without having to fill it out again.`;
+          } else {
+            statusReply = `You haven’t hired me for this project yet. Please hire me first before I can do any work for you. You can click the **Hire** button above or select a package on my profile to get started!`;
+          }
+          const aiMessage = await this.addAssistantMessage(data.chatId, statusReply);
+          this.server.to(data.chatId).emit('typing', { isTyping: false });
+          this.server.to(data.chatId).emit('newMessage', aiMessage);
+          return;
+        }
+      }
+
+      if (incoming && this.isPricingQuery(incoming) && !isHired) {
         const reply = await this.buildPricingReply(data.influencerId, incoming);
         const aiMessage = await this.addAssistantMessage(data.chatId, reply);
         this.server.to(data.chatId).emit('typing', { isTyping: false });
         this.server.to(data.chatId).emit('newMessage', aiMessage);
 
-        const meta = await this.chatService.getChatMeta(data.chatId);
         if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
           const preview = reply.length > 120 ? reply.slice(0, 120) + '…' : reply;
           await this.notificationService.create(meta.customerId, {
@@ -1358,7 +1796,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(data.chatId).emit('typing', { isTyping: false });
         this.server.to(data.chatId).emit('newMessage', aiMessage);
 
-        const meta = await this.chatService.getChatMeta(data.chatId);
         if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
           const preview = predefinedAnswer.length > 120 ? predefinedAnswer.slice(0, 120) + '…' : predefinedAnswer;
           await this.notificationService.create(meta.customerId, {
@@ -1374,7 +1811,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { name, industries, contentStyle, locationCity, locationState, locationCountry, locationAddress, locationPincode, systemPrompt, topic, outOfTopicMessage, serviceType, aiConfig } =
         await this.chatService.getInfluencerAIContext(data.influencerId);
 
-      const lowerIncoming = incoming.toLowerCase();
       const hasIncomingImage = !!data.imageUrl;
       const intent = this.detectIntent(incoming);
 
@@ -1386,7 +1822,41 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const wantsPost = intent === 'post';
       const wantsPoster = this.isPosterRequest(incoming);
 
-      if (serviceType === 'IMAGE_CREATION' && this.isDesignFeedback(incoming, hasIncomingImage)) {
+      // Pre-creation verification check:
+      // Whenever a client asks the AI agent to create something, verify whether the client has hired
+      // that AI agent and whether they still have remaining usage available in their current plan/project.
+      const isCreation =
+        this.isCreationRequest(incoming) ||
+        wantsImage ||
+        wantsPoster ||
+        wantsVideo ||
+        wantsPost ||
+        (hasIncomingImage && this.isDesignFeedback(incoming, hasIncomingImage)) ||
+        (!hasIncomingImage && this.isImageEditRequest(incoming));
+
+      if (isCreation) {
+        if (!isHired) {
+          const aiMessage = await this.addAssistantMessage(
+            data.chatId,
+            `You haven’t hired me for this project yet. Please hire me first before doing any work. You can click the **Hire** button above or select a package on my profile, and once hired, I’ll immediately proceed with your request!`,
+          );
+          this.server.to(data.chatId).emit('typing', { isTyping: false });
+          this.server.to(data.chatId).emit('newMessage', aiMessage);
+          return;
+        }
+
+        if (!hasRemainingUsage) {
+          const aiMessage = await this.addAssistantMessage(
+            data.chatId,
+            `The available quantity/credits for this project have been fully used (${totalDeliveredUnits}/${totalOrderedUnits} completed). I cannot create anything further right now. Please add more usage for your next work using the **Add Usage** button above. Your Project Brief will be automatically reused and you will be taken directly to package selection!`,
+          );
+          this.server.to(data.chatId).emit('typing', { isTyping: false });
+          this.server.to(data.chatId).emit('newMessage', aiMessage);
+          return;
+        }
+      }
+
+      if (isHired && hasRemainingUsage && serviceType === 'IMAGE_CREATION' && this.isDesignFeedback(incoming, hasIncomingImage)) {
         const cfg = aiConfig;
         if (!cfg?.imageApiKey || !cfg?.imageApiUrl || !cfg?.imageModel) {
           const msg =
@@ -1463,7 +1933,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      if (serviceType === 'IMAGE_CREATION' && !hasIncomingImage && this.isImageEditRequest(incoming)) {
+      if (isHired && serviceType === 'IMAGE_CREATION' && !hasIncomingImage && this.isImageEditRequest(incoming)) {
         const last = await this.chatService.getLastAssistantImage(data.chatId);
         const lastUrl = typeof (last as any)?.imageUrl === 'string' ? String((last as any).imageUrl).trim() : '';
         if (lastUrl) {
@@ -1551,7 +2021,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       const existingWorkflow = await this.chatService.getWorkflowState(data.chatId);
-      if (existingWorkflow) {
+      if (existingWorkflow && (!isHired || !hasRemainingUsage)) {
+        await this.chatService.setWorkflowState(data.chatId, null);
+        const warnMsg = !isHired
+          ? `Please hire me first before proceeding with this project.`
+          : `You have used all the available deliverables in your current plan/project with me (${totalDeliveredUnits}/${totalOrderedUnits} completed). Please purchase additional usage before continuing.`;
+        const aiMessage = await this.addAssistantMessage(data.chatId, warnMsg);
+        this.server.to(data.chatId).emit('typing', { isTyping: false });
+        this.server.to(data.chatId).emit('newMessage', aiMessage);
+        return;
+      }
+      if (isHired && hasRemainingUsage && existingWorkflow) {
         if (this.isAddressQuery(incoming)) {
           const includePincode = this.isPincodeRequested(incoming);
           const reply = this.buildAddressReply({
@@ -2077,29 +2557,56 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           await this.chatService.setWorkflowState(data.chatId, null);
           const details = await this.chatService.getChatMemoryDetails(data.chatId);
           const brand = typeof (details as any)?.brandName === 'string' ? (details as any).brandName.trim() : '';
+          const productName = typeof (details as any)?.productName === 'string' ? (details as any).productName.trim() : '';
+          const website = typeof (details as any)?.website === 'string' ? (details as any).website.trim() : '';
+          const targetAudience = typeof (details as any)?.targetAudience === 'string' ? (details as any).targetAudience.trim() : '';
+          const tone = typeof (details as any)?.tone === 'string' ? (details as any).tone.trim() : '';
 
-          const prompt =
-            `Write a ${dataMap.format || 'post'}.\n` +
-            `${brand ? `Brand: ${brand}\n` : ''}` +
-            `Audience/CTA: ${dataMap.audience || ''}\n` +
-            `Constraints/tone/points: ${dataMap.constraints || ''}\n`;
-
-          let responseText = '';
+          let postResult: any = null;
           try {
-            responseText = await this.aiService.generateResponse(
-              `You write marketing content. Keep it concise and aligned with the requested format, audience, CTA, and tone.`,
-              [{ role: 'user' as const, content: prompt }],
-              360,
-            );
+            postResult = await this.aiService.generatePost({
+              influencer: {
+                id: data.influencerId,
+                name,
+                systemPrompt,
+                industries,
+                contentStyle,
+              },
+              aiConfig,
+              input: {
+                topic: String(dataMap.format || 'Marketing Campaign'),
+                postType: String(dataMap.format || 'social_post'),
+                targetAudience: String(dataMap.audience || targetAudience || ''),
+                callToAction: String(dataMap.audience || ''),
+                inclusions: dataMap.constraints ? [String(dataMap.constraints)] : [],
+                brandName: brand || undefined,
+                productName: productName || undefined,
+                website: website || undefined,
+                tone: tone || undefined,
+                generateVisual: true,
+              },
+            });
           } catch (err: any) {
-            if (!this.isQuotaError(err)) throw err;
-            const suffix = await this.quotaHelpSuffix();
-            responseText =
-              `The chat provider is rejecting requests with 429 (insufficient_quota / rate limit).${suffix}\n\n` +
-              this.formatPostFallback(String(dataMap.format || ''), brand, String(dataMap.audience || ''), String(dataMap.constraints || ''));
+            console.error('[ChatGateway] Post generation error:', err);
           }
 
-          const aiMessage = await this.addAssistantMessage(data.chatId, responseText);
+          if (postResult) {
+            await this.chatService.saveGeneratedPostToProject(data.chatId, postResult);
+            const formatted =
+              `POST\n` +
+              `Title: ${postResult.title}\n\n` +
+              `Description: ${postResult.caption}\n\n` +
+              `Hashtags: ${postResult.hashtags.join(' ')}` +
+              (postResult.imageUrl ? `\n\nImage: ${postResult.imageUrl}` : '');
+            const aiMessage = await this.addAssistantMessage(data.chatId, formatted, postResult.imageUrl || undefined);
+            this.server.to(data.chatId).emit('typing', { isTyping: false });
+            this.server.to(data.chatId).emit('newMessage', aiMessage);
+            return;
+          }
+
+          // Fallback if generatePost completely failed
+          const fallbackText = this.formatPostFallback(String(dataMap.format || ''), brand, String(dataMap.audience || ''), String(dataMap.constraints || ''));
+          const aiMessage = await this.addAssistantMessage(data.chatId, fallbackText);
           this.server.to(data.chatId).emit('typing', { isTyping: false });
           this.server.to(data.chatId).emit('newMessage', aiMessage);
           return;
@@ -2403,7 +2910,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
       }
 
-      if (serviceType === 'IMAGE_CREATION' && (wantsImage || wantsPoster || this.isImageReferenceRequest(incoming, !!data.imageUrl))) {
+      if (isHired && serviceType === 'IMAGE_CREATION' && (wantsImage || wantsPoster || this.isImageReferenceRequest(incoming, !!data.imageUrl))) {
         const details = await this.chatService.getChatMemoryDetails(data.chatId);
         const brand = typeof (details as any)?.brandName === 'string' ? (details as any).brandName.trim() : '';
         const hasImage = !!data.imageUrl;
@@ -2656,7 +3163,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      if (serviceType === 'VIDEO_CREATION' && wantsVideo) {
+      if (isHired && serviceType === 'VIDEO_CREATION' && wantsVideo) {
         await this.chatService.setWorkflowState(data.chatId, { kind: 'video', step: 0, data: {} });
         const aiMessage = await this.addAssistantMessage(
           data.chatId,
@@ -2667,7 +3174,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      if (serviceType === 'POST_CREATION' && wantsPost) {
+      if (isHired && serviceType === 'POST_CREATION' && wantsPost) {
         const cadence = this.parsePostCadence(incoming);
         const postsPerPeriod = cadence?.postsPerWeek ?? this.parsePostCount(incoming) ?? 1;
         const mode = cadence ? 'weekly' : 'oneoff';
@@ -2697,24 +3204,63 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           return;
         }
 
-        await this.chatService.setWorkflowState(data.chatId, { kind: 'post', step: 0, data: {} });
-        const aiMessage = await this.addAssistantMessage(
-          data.chatId,
-          `Got it—what are we writing (blog post, LinkedIn post, caption), and what’s the topic?`,
-        );
-        this.server.to(data.chatId).emit('typing', { isTyping: false });
-        this.server.to(data.chatId).emit('newMessage', aiMessage);
-        return;
+        // If the user already provided topic/intent/instructions or direct creation command, do not block with the 3-question questionnaire
+        const isDirectPostRequest =
+          /\b(create|write|generate|draft|compose|make|give\s+me|produce)\b/i.test(incoming) ||
+          /\b(about|on|regarding|discussing|covering|explaining|focused\s+on)\b/i.test(incoming) ||
+          incoming.trim().split(/\s+/).length >= 5;
+
+        if (!isDirectPostRequest) {
+          await this.chatService.setWorkflowState(data.chatId, { kind: 'post', step: 0, data: {} });
+          const aiMessage = await this.addAssistantMessage(
+            data.chatId,
+            `Got it—what are we writing (blog post, LinkedIn post, caption), and what’s the topic?`,
+          );
+          this.server.to(data.chatId).emit('typing', { isTyping: false });
+          this.server.to(data.chatId).emit('newMessage', aiMessage);
+          return;
+        }
       }
 
       // Fetch conversation history once — reused for relevance check and response generation.
       // The current user message was already saved above, so it is included here.
       const rawHistory = await this.chatService.getRecentMessages(data.chatId);
-      const allMessages = rawHistory.map((m) => ({
-        role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
-        content: m.content,
-        imageUrl: m.imageUrl ?? undefined,
-      }));
+      const allMessages = rawHistory.map((m) => {
+        const role = m.role === 'USER' ? ('user' as const) : ('assistant' as const);
+        const parsed = this.parseReplyMetadata(m.content);
+        if (parsed.hasReply) {
+          let fullOriginal = parsed.quotedContent;
+          if (parsed.messageId) {
+            const targetMsg = rawHistory.find((h) => h.id === parsed.messageId);
+            if (targetMsg) {
+              const cleaned = targetMsg.content.replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '').trim();
+              if (cleaned) fullOriginal = cleaned;
+            }
+          }
+          const formatted = `[REFERENCED / QUOTED MESSAGE by ${parsed.senderName}]:\n"${fullOriginal}"\n\n[USER REPLY / REVISION INSTRUCTION]:\n${parsed.userText}`;
+          return {
+            role,
+            content: formatted,
+            imageUrl: m.imageUrl ?? undefined,
+          };
+        }
+        let historyContent = m.content;
+        if (role === 'assistant') {
+          historyContent = historyContent
+            .replace(/(?:^|\n)\s*(?:\*\*)?Image(?:\s*Prompt)?(?:\*\*)?:[^\n]*/gi, '')
+            .replace(/http:\/\/localhost:\d+\/uploads\/[^\s\n]+/gi, '')
+            .replace(/http:\/\/127\.0\.0\.1:\d+\/uploads\/[^\s\n]+/gi, '')
+            .replace(/\[Image generated:[^\]]+\]/gi, '')
+            .replace(/Generating image now\.\.\./gi, '')
+            .replace(/\[Image attached to post\]/gi, '')
+            .trim();
+        }
+        return {
+          role,
+          content: historyContent,
+          imageUrl: m.imageUrl ?? undefined,
+        };
+      });
       const messages = this.compactChatMessages(allMessages);
 
       const details = await this.chatService.getChatMemoryDetails(data.chatId);
@@ -2724,7 +3270,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(data.chatId).emit('typing', { isTyping: false });
         this.server.to(data.chatId).emit('newMessage', aiMessage);
 
-        const meta = await this.chatService.getChatMeta(data.chatId);
         if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
           const preview = direct.length > 120 ? direct.slice(0, 120) + '…' : direct;
           await this.notificationService.create(meta.customerId, {
@@ -2750,15 +3295,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      // Only run the topic-relevance check on the very first user message.
+      // Check reply metadata on current incoming message
+      const currentReplyMeta = this.parseReplyMetadata(data.content);
+      const userEffectiveText = currentReplyMeta.hasReply ? currentReplyMeta.userText : incoming;
+
+      // Check if incoming message is a greeting or general pleasantry
+      const isGreetingMsg = this.isGreeting(userEffectiveText);
+
+      // Only run the topic-relevance check on non-greeting first user messages.
       // Once a conversation is underway the AI's system prompt keeps it on-topic,
-      // and the user must be able to ask about anything they already shared
-      // (e.g. "what is my brand name?") without being incorrectly blocked.
+      // and if the user is replying to a previous message, it is always relevant.
       const priorUserMessages = messages.filter((m) => m.role === 'user');
       const isFirstMessage = priorUserMessages.length <= 1;
-      const isRelevant = isFirstMessage
-        ? await this.aiService.isTopicRelevant(systemPrompt, topic, data.content, [], aiConfig ?? undefined)
-        : true;
+      const isRelevant = currentReplyMeta.hasReply || isGreetingMsg || !isFirstMessage
+        ? true
+        : await this.aiService.isTopicRelevant(systemPrompt, topic, userEffectiveText || data.content, [], aiConfig ?? undefined);
 
       if (!isRelevant) {
         const fallback =
@@ -2770,7 +3321,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(data.chatId).emit('typing', { isTyping: false });
         this.server.to(data.chatId).emit('newMessage', aiMessage);
 
-        const meta = await this.chatService.getChatMeta(data.chatId);
         if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
           const preview = fallback.length > 120 ? fallback.slice(0, 120) + '…' : fallback;
           await this.notificationService.create(meta.customerId, {
@@ -2784,7 +3334,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Always keep replies short and strictly within the influencer's defined scope.
       // Explicitly instruct the AI to use conversation history when the user refers back to it.
-      const memory = await this.chatService.getChatMemoryForPrompt(data.chatId);
+      const memory = await this.chatService.getChatMemoryForPrompt(data.chatId, userEffectiveText || incoming);
       let imageContext = '';
       if (data.imageUrl) {
         const visionSystem =
@@ -2797,26 +3347,72 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
           imageContext = await this.aiService.generateResponse(
             visionSystem,
-            [{ role: 'user' as const, content: incoming || 'Analyze the attached image.', imageUrl: data.imageUrl }],
+            [{ role: 'user' as const, content: userEffectiveText || incoming || 'Analyze the attached image.', imageUrl: data.imageUrl }],
             220,
           );
         } catch { }
       }
       const compactMemory = memory ? this.truncateText(memory, 2400) : '';
       const compactImageContext = imageContext ? this.truncateText(imageContext, 900) : '';
+      const hireInstruction = (isHired && hasRemainingUsage)
+        ? `\n===================================================\n` +
+          `CLIENT HIRE STATUS: HIRED & ACTIVE WITH UNUSED QUANTITY AVAILABLE\n` +
+          `- CRITICAL DIRECTIVE: You have ALREADY been hired by this client for this project.\n` +
+          `- UNUSED CREDITS / QUANTITY AVAILABLE: ${remainingUnits} of ${totalOrderedUnits} deliverable(s) remaining (${totalDeliveredUnits} completed).\n` +
+          `- Whenever the client asks you to create something (post, image, poster, video, script, article, ad, or any marketing deliverable), USE the available quantity and complete the client's request directly in this response.\n` +
+          `- NEVER ask the client to hire you, never tell them to click the "Hire" button, never ask them to select a package, and never mention that you don't have access to confirm hiring status.\n` +
+          `===================================================\n`
+        : (isHired && !hasRemainingUsage)
+        ? `\n===================================================\n` +
+          `CLIENT HIRE STATUS: HIRED BUT QUANTITY FULLY USED (0 REMAINING)\n` +
+          `- The client has hired you previously, BUT the available quantity/credits for this project have been fully used (${totalDeliveredUnits}/${totalOrderedUnits} completed).\n` +
+          `- MANDATORY DIRECTIVE: Do NOT create, generate, write, or produce any further posts, images, videos, or deliverables.\n` +
+          `- Inform the client politely that the available quantity has been fully used and ask them to add more usage using the "Add Usage" button above before you can create anything further.\n` +
+          `- Mention that their existing Project Brief will automatically be reused and pre-filled, so they will be taken directly to Step 2: Package selection.\n` +
+          `===================================================\n`
+        : `\n===================================================\n` +
+          `CLIENT HIRE STATUS: NOT HIRED FOR THE CURRENT PROJECT\n` +
+          `- The client has NOT hired you yet for this project.\n` +
+          `- MANDATORY RULE BEFORE DOING ANY WORK: When the client asks you to create something (post, image, poster, video, script, article, ad, or any marketing deliverable):\n` +
+          `  1. First, understand the client's request in detail (their goal, product/brand, target audience, format, or topic).\n` +
+          `  2. Clearly tell the client what you can do for them on this project based on your niche and service type (${serviceType}).\n` +
+          `  3. Ask the client to hire you first before doing any work (via the "Hire" button in chat or the packages on your profile).\n` +
+          `  4. Do NOT create, output, or generate any deliverable until they hire you.\n` +
+          `===================================================\n`;
+
       const fullSystemPrompt =
-        `${this.truncateText(systemPrompt, 5000)}` +
+        `You are ${name}, an AI influencer/creator.` +
+        (systemPrompt ? `\n\n${this.truncateText(systemPrompt, 5000)}` : '') +
         `\n\nPROFILE:\n` +
+        `- Name: ${name}\n` +
         `- Service type: ${serviceType}\n` +
         (industriesList ? `- Industries: ${industriesList}\n` : '') +
         (contentStyle ? `- Content style: ${contentStyle}\n` : '') +
-        (compactMemory ? `\n\nCONTEXT MEMORY:\n${compactMemory}\n` : '\n') +
+        hireInstruction +
+        (compactMemory ? `\n\nCONTEXT MEMORY (Saved Client & Project Information):\n${compactMemory}\n` : '\n') +
         (compactImageContext ? `\n\nIMAGE CONTEXT:\n${compactImageContext}\n` : '') +
-        `\nREPLY RULES:\n` +
-        `- Be concise (1–5 sentences) and only answer what was asked.\n` +
-        `- Use prior messages when the user refers back.\n` +
+        `\nREPLY & MEMORY RULES:\n` +
+        `- AUTOMATIC MEMORY RETENTION: All remembered client requirements, project specifications, preferences, instructions, decisions, approved approaches, and technical details in CONTEXT MEMORY must be actively respected and recalled.\n` +
+        `- NEVER ask the client to repeat or re-specify information that is already present in CONTEXT MEMORY (such as their brand name, product name, format, video length, deadlines, tone, forbidden elements, or approved decisions). Proactively integrate these remembered constraints and choices into all responses.\n` +
+        (isGreetingMsg
+          ? `- The user is greeting you (e.g. "Hi", "Hello", "Hey"). Respond with a warm, natural, friendly greeting as ${name}. Acknowledge them, reference saved client or brand details if present in CONTEXT MEMORY, and ask how you can assist.\n`
+          : '') +
+        (currentReplyMeta.hasReply
+          ? `- REVISION & REPLY HANDLING: The user has specifically replied to and referenced an earlier message in the conversation (tagged with [REFERENCED / QUOTED MESSAGE]). Carefully analyze what the user wants to change, modify, improve, update, correct, or expand in the referenced message. Return the revised and improved version directly and clearly based on their instructions while maintaining brand continuity and conversation context.\n`
+          : '') +
+        `- When the user replies to or references a specific message, understand what they want to change, modify, improve, or update in the referenced message, and return the revised version accordingly.\n` +
+        `- Be concise and conversational, unless revising content or delivering a requested post/asset.\n` +
+        `- Understand the user's message using the full conversation context, not just the current message. Remember brand details, requirements, preferences, and ongoing requests from prior messages.\n` +
+        `- Interpret short messages (such as "yes", "do that", "make it better", "what about this?", or "create one for me") using prior conversation context.\n` +
+        `- Stay focused on your assigned topic and expertise, but do not be overly restrictive. Answer questions, follow-ups, and requests directly or reasonably related to the topic.\n` +
+        `- If relevant, answer naturally and helpfully. If a request is completely unrelated to your area, politely redirect the user back to your expertise. Never randomly change the subject.\n` +
         `- Ask at most one brief follow-up question if needed.\n` +
-        `- If outside your expertise, say so in one sentence.\n` +
+        `- POST OUTPUT FORMAT: When delivering a completed post or draft for the client, always format it in this exact structure so it is automatically saved to the client's project:\n` +
+        `POST\n` +
+        `Title: [Post title]\n\n` +
+        `Description: [Complete post content/caption]\n\n` +
+        `Hashtags: [Relevant hashtags]\n\n` +
+        `Image: [Provide a vivid, detailed visual graphic description prompt for this post. NEVER output a URL, never output "http", and never say "generating image", always provide a descriptive visual prompt]\n\n` +
         `- Do not claim to be human.`;
 
       let responseText: string;
@@ -2851,12 +3447,86 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const aiMessage = await this.addAssistantMessage(data.chatId, responseText);
+      // Automatically add generated post to the client's order BEFORE emitting newMessage
+      const extractedPost = this.extractPostFromContent(responseText, data.imageUrl || undefined, topic || undefined);
+      if (extractedPost) {
+        if (!isHired) {
+          responseText = `You haven’t hired me for this project yet. Please hire me first before doing any work. You can click the **Hire** button above or select a package on my profile, and once hired, I’ll immediately proceed with your request!`;
+        } else if (!hasRemainingUsage) {
+          responseText = `The available quantity/credits for this project have been fully used (${totalDeliveredUnits}/${totalOrderedUnits} completed). I cannot create anything further right now. Please purchase or hire additional quantity for your next work using the **Hire** button above, and once added, I'll be happy to complete your request!`;
+        } else {
+          // Automatically generate 1 relevant image whenever a post is created if image API is configured
+          const userAskedForImage = /\b(image|picture|photo|visual|graphic|creative|illustration|banner)\b/i.test(incoming);
+          const isPostCreator = serviceType === 'POST_CREATION';
+          const imgApiUrl = aiConfig?.imageApiUrl?.trim();
+          const imgApiKey = aiConfig?.imageApiKey?.trim();
+          const imgModel = aiConfig?.imageModel?.trim() || 'gpt-image-1';
+          const hasImageConfig = !!(imgApiUrl && imgApiKey);
+
+          // Every post/blog post automatically generates 1 relevant image when image API is configured
+          const wantsImageForPost = hasImageConfig && (isPostCreator || userAskedForImage || !!extractedPost.imagePrompt || true);
+
+          let generatedImageUrl: string | null = null;
+
+          if (wantsImageForPost) {
+            try {
+              const promptToUse = await this.buildRelevantImagePrompt(
+                extractedPost,
+                incoming,
+                extractedPost.imagePrompt,
+                aiConfig ?? undefined,
+              );
+              extractedPost.imagePrompt = promptToUse;
+              console.log('[ChatGateway] Generating 1 relevant image for post with prompt:', promptToUse);
+              generatedImageUrl = await this.aiService.generateImage(imgApiUrl, imgApiKey, imgModel, promptToUse);
+              console.log('[ChatGateway] Successfully generated image URL:', generatedImageUrl);
+            } catch (imgErr: any) {
+              console.error('[ChatGateway] Failed to generate image for post:', imgErr?.message || imgErr);
+            }
+          }
+
+          if (generatedImageUrl) {
+            extractedPost.imageUrl = generatedImageUrl;
+            // Clean up any hallucinated local URL or generation placeholders from responseText
+            responseText = responseText
+              .replace(/http:\/\/localhost:\d+\/uploads\/[^\s\n]+/gi, '')
+              .replace(/http:\/\/127\.0\.0\.1:\d+\/uploads\/[^\s\n]+/gi, '')
+              .replace(/\[Image generated:[^\]]+\]/gi, '')
+              .replace(/Generating image now\.\.\./gi, '')
+              .trim();
+
+            if (/(?:^|\n)\s*(?:\*\*)?Image(?:\s*Prompt)?(?:\*\*)?:/i.test(responseText)) {
+              responseText = responseText.replace(
+                /((?:^|\n)\s*(?:\*\*)?Image(?:\s*Prompt)?(?:\*\*)?:(?:\*\*)?\s*)([^\n]+)/i,
+                `$1${generatedImageUrl}`
+              );
+            } else {
+              responseText = `${responseText.trim()}\n\nImage: ${generatedImageUrl}`;
+            }
+          } else {
+            extractedPost.imageUrl = null;
+            // Clean up any hallucinated local URL or generation placeholders
+            responseText = responseText
+              .replace(/http:\/\/localhost:\d+\/uploads\/[^\s\n]+/gi, '')
+              .replace(/http:\/\/127\.0\.0\.1:\d+\/uploads\/[^\s\n]+/gi, '')
+              .replace(/\[Image generated:[^\]]+\]/gi, '')
+              .replace(/Generating image now\.\.\./gi, '')
+              .trim();
+          }
+
+          try {
+            await this.chatService.saveGeneratedPostToProject(data.chatId, extractedPost);
+          } catch (postErr) {
+            console.error('[ChatGateway] Failed to save post to order:', postErr);
+          }
+        }
+      }
+
+      const aiMessage = await this.addAssistantMessage(data.chatId, responseText, extractedPost?.imageUrl || undefined);
       this.server.to(data.chatId).emit('typing', { isTyping: false });
       this.server.to(data.chatId).emit('newMessage', aiMessage);
 
       // Notify customer
-      const meta = await this.chatService.getChatMeta(data.chatId);
       if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
         const preview = responseText.length > 120 ? responseText.slice(0, 120) + '…' : responseText;
         await this.notificationService.create(meta.customerId, {

@@ -1,17 +1,33 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import Link from 'next/link';
 import { PRICING_PACKAGES } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/lib/auth';
 
 export function PricingSection() {
+  const { isAuthenticated } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const getPackageHref = (pkgType: string) => {
+    if (mounted && isAuthenticated) {
+      return `/influencers?package=${pkgType}`;
+    }
+    return `/signup?package=${pkgType}`;
+  };
+
   return (
     <section className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="text-center mb-16"
@@ -31,7 +47,7 @@ export function PricingSection() {
             return (
               <motion.div
                 key={pkg.type}
-                initial={{ opacity: 0, y: 30 }}
+                initial={false}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
@@ -72,7 +88,7 @@ export function PricingSection() {
                   </li>
                 </ul>
                 <Link
-                  href="/signup"
+                  href={getPackageHref(pkg.type)}
                   className={cn(
                     'text-center py-2.5 rounded-lg text-sm font-semibold transition-all',
                     isPopular
@@ -90,3 +106,4 @@ export function PricingSection() {
     </section>
   );
 }
+

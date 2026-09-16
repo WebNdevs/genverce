@@ -46,3 +46,48 @@ export const GET_MY_STATS = gql`
     }
   }
 `;
+
+export const ADMIN_USER_HIRED_AGENTS = gql`
+  query AdminUserHiredAgents($userId: String!) {
+    adminUserHiredAgents(userId: $userId) {
+      influencerId
+      influencerName
+      avatar
+      serviceType
+      orderId
+      status
+      createdAt
+    }
+  }
+`;
+
+export const GET_MY_HIRED_AGENTS_OVERVIEW = gql`
+  query GetMyHiredAgentsOverview {
+    myHiredAgentsOverview {
+      totalAgents
+      activeAgents
+      totalRemainingOrders
+      totalCompletedOrders
+      totalPendingOrders
+      agents {
+        influencerId
+        influencerName
+        avatar
+        serviceType
+        bio
+        orderId
+        status
+        totalOrders
+        completedOrders
+        pendingOrders
+        remainingOrders
+        totalOrderedUnits
+        totalDeliveredUnits
+        remainingUnits
+        chatId
+        latestOrderDate
+      }
+    }
+  }
+`;
+

@@ -93,6 +93,14 @@ export function Footer() {
               Contact
             </h4>
             <ul className="space-y-2">
+              <li>
+                <Link
+                  href="/contact"
+                  className="text-sm text-text-secondary hover:text-brand-light transition-colors font-medium"
+                >
+                  Contact Us
+                </Link>
+              </li>
               <li className="text-sm text-text-secondary">
                 support@genverce.ai
               </li>

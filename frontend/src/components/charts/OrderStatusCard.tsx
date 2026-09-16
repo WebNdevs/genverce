@@ -36,7 +36,7 @@ export default function OrderStatusCard({ data }: any) {
                             </div>
 
                             {/* Progress Track */}
-                            <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="w-full h-2.5 rounded-full bg-border/60 overflow-hidden">
                                 {/* Progress Fill */}
                                 <div
                                     className={`h-full rounded-full ${item.color}`}

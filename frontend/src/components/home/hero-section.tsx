@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowRight, Play } from 'lucide-react';
@@ -7,6 +8,11 @@ import { ParticleBackground } from './particle-background';
 import { useAuthStore } from '@/lib/auth';
 
 export function HeroSection() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const mock = process.env.NEXT_PUBLIC_MOCK_MODE === 'true';
   const { isAuthenticated } = useAuthStore();
   return (
@@ -22,7 +28,7 @@ export function HeroSection() {
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Badge */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-brand/30 bg-brand/5 mb-8"
@@ -35,7 +41,7 @@ export function HeroSection() {
 
         {/* Main Headline */}
         <motion.h1
-          initial={{ opacity: 0, y: 30 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
           className="text-5xl sm:text-6xl lg:text-hero font-bold leading-tight mb-6"
@@ -48,7 +54,7 @@ export function HeroSection() {
 
         {/* Subtext */}
         <motion.p
-          initial={{ opacity: 0, y: 30 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
           className="text-lg sm:text-xl text-text-secondary max-w-2xl mx-auto mb-10"
@@ -59,7 +65,7 @@ export function HeroSection() {
 
         {/* CTAs */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
@@ -68,24 +74,25 @@ export function HeroSection() {
             Explore Influencers
             <ArrowRight size={18} />
           </Link>
-          <Link
-            href="#how-it-works"
-            className="btn-ghost flex items-center gap-2 text-base"
-          >
-            <Play size={18} />
-            See How It Works
-          </Link>
-          {isAuthenticated && (
+          {mounted && isAuthenticated ? (
             <Link href="/dashboard" className="btn-ghost flex items-center gap-2 text-base">
               Go to Dashboard
               <ArrowRight size={18} />
+            </Link>
+          ) : (
+            <Link
+              href="#how-it-works"
+              className="btn-ghost flex items-center gap-2 text-base"
+            >
+              <Play size={18} />
+              See How It Works
             </Link>
           )}
         </motion.div>
 
         {/* Stats */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
           className="mt-16 grid grid-cols-3 gap-8 max-w-lg mx-auto"
@@ -109,7 +116,7 @@ export function HeroSection() {
 
       {/* Scroll indicator */}
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ delay: 1, duration: 1 }}
         className="absolute bottom-8 left-1/2 -translate-x-1/2"

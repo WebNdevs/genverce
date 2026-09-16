@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   Video, ShoppingCart, Users, ArrowRight, Download, Ticket,
-  Clock, CheckCircle, XCircle, Loader, Zap, Star, MessageSquare
+  Clock, CheckCircle, XCircle, Loader, Zap, MessageSquare
 } from 'lucide-react';
 import { GET_DASHBOARD_DATA } from '@/graphql/queries/order';
 import { useAuthStore } from '@/lib/auth';
@@ -35,8 +35,12 @@ export default function DashboardPage() {
 
   useLayoutEffect(() => {
     setMounted(true);
-    if (hydrated && !isAuthenticated) { router.push('/login'); }
-  }, [hydrated, isAuthenticated]);
+    if (hydrated && !isAuthenticated) {
+      router.push('/login');
+    } else if (hydrated && isAuthenticated && user?.role === 'CUSTOMER' && !user?.isOnboarded) {
+      router.replace('/onboarding');
+    }
+  }, [hydrated, isAuthenticated, user, router]);
 
   const { data, loading: ordersLoading } = useQuery(GET_DASHBOARD_DATA, {
     skip: !isAuthenticated,
@@ -50,38 +54,37 @@ export default function DashboardPage() {
   );
   const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED');
 
-  if (!mounted) {
-    return null;
+  if (mounted && user?.role === 'ADMIN') {
+    return <AdminDashboard />;
   }
 
   return (
-    user?.role === 'ADMIN' ? (
-      <AdminDashboard />
-    ) : (
-      <div className="py-2">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-3xl font-bold">Welcome back, <span className="gradient-text">{user?.name?.split(' ')[0]}</span></h1>
-          <p className="text-text-secondary mt-1">Track your orders and manage your AI content</p>
-        </motion.div>
+    <div className="py-2">
+      {/* Header */}
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="mb-8">
+        <h1 className="text-3xl font-bold">
+          Welcome back, <span className="gradient-text">{user?.name ? user.name.split(' ')[0] : 'there'}</span>
+        </h1>
+        <p className="text-text-secondary mt-1">Track your orders and manage your AI content</p>
+      </motion.div>
 
-        {/* Stats */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      {/* Stats */}
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {[
-            { label: 'Total Orders', value: stats.totalOrders, icon: ShoppingCart, color: 'text-brand-light' },
-            { label: 'Videos Generated', value: stats.totalVideosGenerated, icon: Video, color: 'text-success' },
-            { label: 'Influencers Hired', value: stats.totalInfluencersHired, icon: Users, color: 'text-brand' },
-          ].map((stat, i) => (
-            <div key={stat.label} className="glass-card p-5 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center">
+            { label: 'Total Orders', value: stats.totalOrders, icon: ShoppingCart, color: 'text-brand-light', href: '/dashboard/orders' },
+            { label: 'Videos Generated', value: stats.totalVideosGenerated, icon: Video, color: 'text-success', href: '/dashboard/orders' },
+            { label: 'Influencers Hired', value: stats.totalInfluencersHired, icon: Users, color: 'text-brand', href: '/dashboard/ai-agents' },
+          ].map((stat) => (
+            <Link key={stat.label} href={stat.href} className="glass-card p-5 flex items-center gap-4 hover:border-brand/40 transition-colors group">
+              <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center group-hover:scale-105 transition-transform">
                 <stat.icon size={22} className={stat.color} />
               </div>
               <div>
                 <p className="text-2xl font-bold">{stat.value}</p>
                 <p className="text-sm text-text-secondary">{stat.label}</p>
               </div>
-            </div>
+            </Link>
           ))}
         </motion.div>
 
@@ -235,6 +238,5 @@ export default function DashboardPage() {
           )}
         </motion.div>
       </div>
-    )
   );
 }

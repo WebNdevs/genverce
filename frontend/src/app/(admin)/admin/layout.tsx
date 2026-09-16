@@ -122,14 +122,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
           {/* Mobile sidebar toggle */}
-          <div className="lg:hidden mb-4">
-            <button
-              onClick={() => setMobileSidebarOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Menu size={16} /> Admin Menu
-            </button>
-          </div>
+          {(pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || pathname.startsWith('/profile')) && (
+            <div className="lg:hidden mb-4">
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <Menu size={16} /> Admin Menu
+              </button>
+            </div>
+          )}
 
           <div className="flex gap-6">
             {/* Desktop sidebar */}

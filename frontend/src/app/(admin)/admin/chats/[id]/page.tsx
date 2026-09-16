@@ -4,13 +4,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ArrowLeft, User, Shield, ChevronUp, ChevronDown, Search, X } from 'lucide-react';
+import { Send, ArrowLeft, User, Shield, ChevronUp, ChevronDown, Search, X, CornerUpLeft } from 'lucide-react';
 import Link from 'next/link';
 import { GET_ADMIN_CHAT } from '@/graphql/queries/chat';
 import { useAuthStore } from '@/lib/auth';
 import { connectSocket } from '@/lib/socket';
 import { toast } from '@/components/ui/toaster';
 import { Message } from '@/types';
+import { MarkdownContent } from '@/components/chat/markdown-content';
+import { ChatReplyBanner, ChatQuotedPreview } from '@/components/chat/chat-reply-ui';
+import { ReplyTarget, parseReplyMessage, serializeReplyMessage } from '@/lib/chat-utils';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -78,6 +81,8 @@ export default function AdminChatDetailPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<ReplyTarget | null>(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -137,17 +142,49 @@ export default function AdminChatDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
+  const handleReply = (msg: Message) => {
+    const isUser = msg.role === 'USER';
+    const senderName = isUser ? (customer?.name || 'User') : (influencer?.name || 'Influencer');
+    const { body } = parseReplyMessage(msg.content);
+    setReplyingTo({
+      id: msg.id,
+      role: msg.role,
+      senderName,
+      content: body,
+      imageUrl: msg.imageUrl,
+    });
+    inputRef.current?.focus();
+  };
+
+  const scrollToMessage = (msgId?: string) => {
+    if (!msgId) return;
+    const el = msgRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(msgId);
+      setTimeout(() => setHighlightedMsgId(null), 2500);
+    }
+  };
+
   const sendMessage = () => {
     if (!input.trim() || sending) return;
     setSending(true);
-    connectSocket(token!).emit('adminSendMessage', { chatId, content: input.trim() });
+    const content = serializeReplyMessage(input.trim(), replyingTo);
+    connectSocket(token!).emit('adminSendMessage', { chatId, content });
     setInput('');
+    setReplyingTo(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setSending(false);
     inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   const q = searchQuery.trim().toLowerCase();
@@ -164,8 +201,6 @@ export default function AdminChatDetailPage() {
   };
 
   const decorated = injectSeparators(messages);
-
-  if (!mounted) return null;
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
@@ -275,6 +310,8 @@ export default function AdminChatDetailPage() {
               const isUser = msg.role === 'USER';
               const isMatch = q && msg.content.toLowerCase().includes(q);
               const isActiveMatch = isMatch && matchedIds[clampedIndex] === msg.id;
+              const isHighlighted = highlightedMsgId === msg.id;
+              const { reply, body } = parseReplyMessage(msg.content);
 
               return (
                 <motion.div
@@ -291,16 +328,40 @@ export default function AdminChatDetailPage() {
                     {!isUser && (
                       <span className="text-[11px] text-text-secondary/60 mb-1 ml-1">{influencer?.name}</span>
                     )}
-                    <div className={`px-4 py-2.5 text-sm leading-relaxed break-words transition-shadow ${
+                    <div className={`px-4 py-2.5 text-sm leading-relaxed break-words transition-all duration-300 ${
                       isUser
                         ? 'bg-brand text-white rounded-2xl rounded-br-sm'
                         : 'bg-surface border border-border text-text-primary rounded-2xl rounded-bl-sm'
-                    } ${isActiveMatch ? 'ring-2 ring-brand ring-offset-1 ring-offset-background' : ''}`}>
-                      {highlight(msg.content, searchQuery.trim())}
+                    } ${isActiveMatch ? 'ring-2 ring-brand ring-offset-1 ring-offset-background' : ''} ${
+                      isHighlighted ? 'ring-2 ring-brand-light ring-offset-2 ring-offset-background shadow-lg shadow-brand/20 scale-[1.01]' : ''
+                    }`}>
+                      {reply && (
+                        <ChatQuotedPreview
+                          reply={reply}
+                          isUser={isUser}
+                          onScrollToMessage={scrollToMessage}
+                        />
+                      )}
+                      <MarkdownContent
+                        content={body}
+                        isUser={isUser}
+                        searchQuery={searchQuery.trim()}
+                      />
                     </div>
-                    <span className="text-[10px] text-text-secondary/50 mt-1 mx-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {fmtTime(msg.createdAt)}
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-1 mx-1">
+                      <button
+                        type="button"
+                        onClick={() => handleReply(msg)}
+                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all px-1.5 py-0.5 rounded hover:bg-surface border border-transparent hover:border-border text-text-secondary/70 hover:text-text-primary flex items-center gap-1 text-[11px]"
+                        title="Reply to this message"
+                      >
+                        <CornerUpLeft size={12} />
+                        <span className="text-[10px]">Reply</span>
+                      </button>
+                      <span className="text-[10px] text-text-secondary/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {fmtTime(msg.createdAt)}
+                      </span>
+                    </div>
                   </div>
                   {isUser && (
                     <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-xs font-bold gradient-text flex-shrink-0">
@@ -317,6 +378,16 @@ export default function AdminChatDetailPage() {
 
       {/* Admin input area */}
       <div className="flex-shrink-0 border-t border-border bg-surface px-4 py-3">
+        <AnimatePresence>
+          {replyingTo && (
+            <div className="max-w-4xl mx-auto">
+              <ChatReplyBanner
+                replyingTo={replyingTo}
+                onCancel={() => setReplyingTo(null)}
+              />
+            </div>
+          )}
+        </AnimatePresence>
         <div className="flex items-center gap-2 mb-2">
           <Shield size={12} className="text-brand-light" />
           <span className="text-xs text-brand-light font-medium">

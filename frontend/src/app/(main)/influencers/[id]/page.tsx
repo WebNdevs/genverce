@@ -3,9 +3,8 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import { motion } from 'framer-motion';
-import Link from 'next/link';
 import {
-  Star, Briefcase, MessageSquare, ArrowRight, Shield,
+  Star, MessageSquare, ArrowRight, Shield,
   Zap, Clock, Globe, Play, CheckCircle
 } from 'lucide-react';
 import { Navbar } from '@/components/layout/navbar';
@@ -94,7 +93,7 @@ export default function InfluencerProfilePage() {
     router.push(`/order/${influencer.id}`);
   };
 
-  const singlePackage = influencer?.packages?.find(
+  const singlePackage = (influencer as any)?.packages?.find(
     (pkg: any) => pkg.type === 'SINGLE' && pkg.isActive
   );
 
@@ -138,7 +137,7 @@ export default function InfluencerProfilePage() {
             {/* LEFT: Sticky sidebar */}
             <div className="lg:col-span-1">
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={false}
                 animate={{ opacity: 1, y: 0 }}
                 className="glass-card p-6 lg:top-24"
               >
@@ -229,13 +228,13 @@ export default function InfluencerProfilePage() {
             {/* RIGHT: Main content */}
             <div className="lg:col-span-2 space-y-6">
               {/* Bio */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
+              <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
                 <h2 className="text-lg font-semibold mb-3">About</h2>
                 <p className="text-text-secondary leading-relaxed">{influencer.bio}</p>
               </motion.div>
 
               {/* Industries & Languages */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="glass-card p-5">
                   <h3 className="text-sm font-semibold text-text-secondary mb-3">Industries</h3>
                   <div className="flex flex-wrap gap-2">
@@ -257,7 +256,7 @@ export default function InfluencerProfilePage() {
               </motion.div>
 
               {/* Portfolio */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
+              <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-6">
                 <h2 className="text-lg font-semibold mb-4">Portfolio</h2>
                 {influencer.portfolio.length === 0 ? (
                   <p className="text-text-secondary text-sm">No portfolio items yet.</p>
@@ -287,15 +286,15 @@ export default function InfluencerProfilePage() {
               </motion.div>
 
               {/* Packages */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass-card p-6">
+              <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass-card p-6">
                 <h2 className="text-lg font-semibold mb-4">Packages</h2>
                 <div className="space-y-3">
-                  {(Array.isArray(influencer.packages) && influencer.packages.length > 0
-                    ? influencer.packages
-                      .filter((p) => p.isActive)
+                  {(Array.isArray((influencer as any).packages) && (influencer as any).packages.length > 0
+                    ? (influencer as any).packages
+                      .filter((p: any) => p.isActive)
                       .slice()
-                      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-                      .map((p) => ({
+                      .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                      .map((p: any) => ({
                         type: p.type,
                         name: p.name,
                         price: p.price,
@@ -303,7 +302,7 @@ export default function InfluencerProfilePage() {
                         description: String(p.description || ''),
                         isMonthly: p.isMonthly,
                       }))
-                    : PRICING_PACKAGES).map((pkg) => (
+                    : PRICING_PACKAGES).map((pkg: any) => (
                       <div key={pkg.type} className="flex items-center justify-between p-4 rounded-xl border border-border hover:border-brand/40 transition-colors group">
                         <div className="flex items-center gap-3">
                           <CheckCircle size={16} className="text-brand-light" />

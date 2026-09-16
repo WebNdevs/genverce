@@ -1,6 +1,5 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -8,65 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ═══════════════════════════════════════════
-// USER & AUTH
-// ═══════════════════════════════════════════
-
-enum Role {
-  CUSTOMER
-  AGENCY
-  ADMIN
-  REVIEWER
-}
-
-enum AccountType {
-  INDIVIDUAL
-  AGENCY
-}
-
 model User {
-  id          String      @id @default(uuid())
-  name        String
-  username    String?     @unique
-  email       String      @unique
-  password    String
-  role        Role        @default(CUSTOMER)
-  accountType AccountType @default(INDIVIDUAL)
-  avatar      String?
-  company     String?
-
-  industry    String?
-  goal        String?
-  platforms   Json?
-  contentTypes Json?
-
-  isActive       Boolean     @default(true)
-  isOnboarded    Boolean     @default(false)
-  brandName      String?
-  productName    String?
-  website        String?
-  targetAudience String?     @db.Text
-  tone           String?
-
-  requestedCustomInfluencer Boolean @default(false)
-
-  deletedAt      DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  chats         Chat[]
-  orders        Order[]
-  reviews       Review[]
-  tickets       Ticket[]
-  payments      Payment[]
-  notifications Notification[]
+  id                        String         @id @default(uuid())
+  name                      String
+  email                     String         @unique
+  password                  String
+  role                      Role           @default(CUSTOMER)
+  accountType               AccountType    @default(INDIVIDUAL)
+  avatar                    String?
+  company                   String?
+  isActive                  Boolean        @default(true)
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  username                  String?        @unique
+  brandName                 String?
+  isOnboarded               Boolean        @default(false)
+  productName               String?
+  targetAudience            String?        @db.Text
+  tone                      String?
+  website                   String?
+  requestedCustomInfluencer Boolean        @default(false)
+  industry                  String?
+  contentTypes              Json?
+  goal                      String?
+  platforms                 Json?
+  deletedAt                 DateTime?
+  chatNotes                 ChatNote[]
+  chats                     Chat[]
+  notifications             Notification[]
+  orders                    Order[]
+  payments                  Payment[]
+  reviews                   Review[]
+  tickets                   Ticket[]
 
   @@map("users")
 }
-
-// ═══════════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════════
 
 model Notification {
   id          String   @id @default(uuid())
@@ -76,58 +51,45 @@ model Notification {
   href        String
   read        Boolean  @default(false)
   createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  @@index([userId], map: "notifications_userId_fkey")
   @@map("notifications")
 }
 
-
-// ═══════════════════════════════════════════
-// AI INFLUENCER
-// ═══════════════════════════════════════════
-
-enum InfluencerServiceType {
-  CHAT_ONLY
-  VIDEO_CREATION
-  POST_CREATION
-  IMAGE_CREATION
-}
-
 model Influencer {
-  id            String                @id @default(uuid())
-  name          String
-  bio           String                @db.Text
-  avatar        String
-  coverImage    String?
-  locationCity    String?
-  locationState   String?
-  locationCountry String?
-  locationAddress String?               @db.Text
-  locationPincode String?
-  industries    Json
-  contentStyle  String
-  languages     Json
-  rating        Float                 @default(0)
-  totalProjects Int                   @default(0)
-  totalReviews  Int                   @default(0)
-  isActive      Boolean               @default(true)
-  hourlyRate    Float?
+  id                String                @id @default(uuid())
+  name              String
+  bio               String
+  avatar            String
+  coverImage        String?
+  industries        Json
+  contentStyle      String
+  languages         Json
+  rating            Float                 @default(0)
+  totalProjects     Int                   @default(0)
+  totalReviews      Int                   @default(0)
+  isActive          Boolean               @default(true)
+  hourlyRate        Float?
   systemPrompt      String                @db.Text
-  topic             String?               @db.Text
-  outOfTopicMessage String?               @db.Text
   voiceId           String?
-  serviceType   InfluencerServiceType @default(CHAT_ONLY)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  deletedAt     DateTime?
-
-  portfolio InfluencerPortfolio[]
-  packages  InfluencerPackage[]
-  chats     Chat[]
-  orders    Order[]
-  reviews   Review[]
-  aiConfig  AIConfig?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  serviceType       InfluencerServiceType @default(CHAT_ONLY)
+  outOfTopicMessage String?               @db.Text
+  topic             String?               @db.Text
+  locationAddress   String?               @db.Text
+  locationCity      String?
+  locationCountry   String?
+  locationPincode   String?
+  locationState     String?
+  deletedAt         DateTime?
+  aiConfig          AIConfig?
+  chats             Chat[]
+  packages          InfluencerPackage[]
+  portfolio         InfluencerPortfolio[]
+  orders            Order[]
+  reviews           Review[]
 
   @@map("influencers")
 }
@@ -135,49 +97,43 @@ model Influencer {
 model AIConfig {
   id           String     @id @default(uuid())
   influencerId String     @unique
-  influencer   Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-
-  chatApiUrl   String?
-  chatApiKey   String?
-  chatModel    String?
-
   scriptApiUrl String?
   scriptApiKey String?
   scriptModel  String?
-
   voiceApiUrl  String?
   voiceApiKey  String?
   voiceModel   String?
-
   videoApiUrl  String?
   videoApiKey  String?
   videoModel   String?
-
   imageApiUrl  String?
   imageApiKey  String?
   imageModel   String?
-
-  postApiUrl   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   postApiKey   String?
+  postApiUrl   String?
   postModel    String?
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  chatApiKey   String?
+  chatApiUrl   String?
+  chatModel    String?
+  chatProvider String?
+  influencer   Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
 
   @@map("ai_configs")
 }
 
 model InfluencerPortfolio {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   influencerId String
   videoUrl     String
   thumbnailUrl String
   title        String
   description  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
+  influencer   Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
 
-  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-
+  @@index([influencerId], map: "influencer_portfolios_influencerId_fkey")
   @@map("influencer_portfolios")
 }
 
@@ -194,36 +150,27 @@ model InfluencerPackage {
   sortOrder    Int         @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-
-  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  influencer   Influencer  @relation(fields: [influencerId], references: [id], onDelete: Cascade)
 
   @@index([influencerId, type])
+  @@index([influencerId])
   @@map("influencer_packages")
 }
 
-// ═══════════════════════════════════════════
-// CHAT & MESSAGES
-// ═══════════════════════════════════════════
-
-enum MessageRole {
-  USER
-  ASSISTANT
-  SYSTEM
-}
-
 model Chat {
-  id           String   @id @default(uuid())
+  id           String      @id @default(uuid())
   customerId   String
   influencerId String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  customer   User       @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-  messages   Message[]
-  memory     ChatMemory?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  memory       ChatMemory?
+  notes        ChatNote[]
+  customer     User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  influencer   Influencer  @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  messages     Message[]
 
   @@unique([customerId, influencerId])
+  @@index([influencerId], map: "chats_influencerId_fkey")
   @@map("chats")
 }
 
@@ -232,33 +179,44 @@ model Message {
   chatId    String
   role      MessageRole
   content   String      @db.Text
-  imageUrl  String?     @db.Text
   createdAt DateTime    @default(now())
+  imageUrl  String?     @db.Text
+  chat      Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
-  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-
+  @@index([chatId], map: "messages_chatId_fkey")
   @@map("messages")
 }
 
 model ChatMemory {
-  id          String   @id @default(uuid())
-  chatId      String   @unique
-  customerId  String
+  id           String   @id @default(uuid())
+  chatId       String   @unique
+  customerId   String
   influencerId String
-  details     Json
-  facts       Json
-  snippets    Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  details      Json
+  facts        Json
+  snippets     Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  chat         Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@map("chat_memories")
 }
 
-// ═══════════════════════════════════════════
-// SITE SETTINGS (singleton row, id = "global")
-// ═══════════════════════════════════════════
+model ChatNote {
+  id        String   @id @default(uuid())
+  chatId    String
+  userId    String
+  title     String?
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId], map: "chat_notes_chatId_fkey")
+  @@index([userId], map: "chat_notes_userId_fkey")
+  @@map("chat_notes")
+}
 
 model SiteSettings {
   id           String   @id @default("global")
@@ -267,29 +225,130 @@ model SiteSettings {
   chatModel    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  chatProvider String?
 
   @@map("site_settings")
 }
 
-// ═══════════════════════════════════════════
-// FAQ / PREDEFINED ANSWERS
-// ═══════════════════════════════════════════
-
 model FaqEntry {
   id        String   @id @default(uuid())
   question  String   @db.Text
-  answers   Json
   keywords  String?  @db.Text
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  answers   Json
 
   @@map("faq_entries")
 }
 
-// ═══════════════════════════════════════════
-// ORDERS
-// ═══════════════════════════════════════════
+model Order {
+  id              String       @id @default(uuid())
+  customerId      String
+  influencerId    String
+  projectBrief    String       @db.LongText
+  package         PackageType
+  deliveryType    DeliveryType @default(QUALITY_CHECKED)
+  status          OrderStatus  @default(PENDING_PAYMENT)
+  price           Float
+  videoUrl        String?
+  thumbnailUrl    String?
+  aiDisclosure    Boolean      @default(true)
+  reviewNotes     String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  deliveredAt     DateTime?
+  videosOrdered   Int          @default(1)
+  videosDelivered Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  customer        User         @relation(fields: [customerId], references: [id])
+  influencer      Influencer   @relation(fields: [influencerId], references: [id])
+  payment         Payment?
+  review          Review?
+  ticket          Ticket?
+
+  @@index([customerId], map: "orders_customerId_fkey")
+  @@index([influencerId], map: "orders_influencerId_fkey")
+  @@map("orders")
+}
+
+model Review {
+  id           String     @id @default(uuid())
+  orderId      String     @unique
+  customerId   String
+  influencerId String
+  rating       Float
+  comment      String?    @db.Text
+  createdAt    DateTime   @default(now())
+  customer     User       @relation(fields: [customerId], references: [id])
+  influencer   Influencer @relation(fields: [influencerId], references: [id])
+  order        Order      @relation(fields: [orderId], references: [id])
+
+  @@index([customerId], map: "reviews_customerId_fkey")
+  @@index([influencerId], map: "reviews_influencerId_fkey")
+  @@map("reviews")
+}
+
+model Ticket {
+  id         String       @id @default(uuid())
+  customerId String
+  orderId    String?      @unique
+  issue      String       @db.Text
+  status     TicketStatus @default(OPEN)
+  resolution String?      @db.Text
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  reopenNote String?      @db.Text
+  customer   User         @relation(fields: [customerId], references: [id])
+  order      Order?       @relation(fields: [orderId], references: [id])
+
+  @@index([customerId], map: "tickets_customerId_fkey")
+  @@map("tickets")
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  orderId         String        @unique
+  customerId      String
+  stripePaymentId String?       @unique
+  amount          Float
+  currency        String        @default("usd")
+  status          PaymentStatus @default(PENDING)
+  refundedAmount  Float         @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  customer        User          @relation(fields: [customerId], references: [id])
+  order           Order         @relation(fields: [orderId], references: [id])
+
+  @@index([customerId], map: "payments_customerId_fkey")
+  @@map("payments")
+}
+
+enum Role {
+  CUSTOMER
+  AGENCY
+  ADMIN
+  REVIEWER
+}
+
+enum AccountType {
+  INDIVIDUAL
+  AGENCY
+}
+
+enum InfluencerServiceType {
+  CHAT_ONLY
+  VIDEO_CREATION
+  POST_CREATION
+  IMAGE_CREATION
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
 
 enum OrderStatus {
   PENDING_PAYMENT
@@ -317,60 +376,6 @@ enum DeliveryType {
   QUALITY_CHECKED
 }
 
-model Order {
-  id              String       @id @default(uuid())
-  customerId      String
-  influencerId    String
-  projectBrief    Json
-  package         PackageType
-  deliveryType    DeliveryType @default(QUALITY_CHECKED)
-  status          OrderStatus  @default(PENDING_PAYMENT)
-  price           Float
-  videoUrl        String?
-  thumbnailUrl    String?
-  aiDisclosure    Boolean      @default(true)
-  reviewNotes     String?
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  deliveredAt     DateTime?
-  videosOrdered   Int          @default(1)
-  videosDelivered Int          @default(0)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-
-  customer   User       @relation(fields: [customerId], references: [id])
-  influencer Influencer @relation(fields: [influencerId], references: [id])
-  review     Review?
-  ticket     Ticket?
-  payment    Payment?
-
-  @@map("orders")
-}
-
-// ═══════════════════════════════════════════
-// REVIEWS
-// ═══════════════════════════════════════════
-
-model Review {
-  id           String   @id @default(uuid())
-  orderId      String   @unique
-  customerId   String
-  influencerId String
-  rating       Float
-  comment      String?  @db.Text
-  createdAt    DateTime @default(now())
-
-  order      Order      @relation(fields: [orderId], references: [id])
-  customer   User       @relation(fields: [customerId], references: [id])
-  influencer Influencer @relation(fields: [influencerId], references: [id])
-
-  @@map("reviews")
-}
-
-// ═══════════════════════════════════════════
-// TICKETS & SUPPORT
-// ═══════════════════════════════════════════
-
 enum TicketStatus {
   OPEN
   IN_PROGRESS
@@ -378,49 +383,10 @@ enum TicketStatus {
   CLOSED
 }
 
-model Ticket {
-  id         String       @id @default(uuid())
-  customerId String
-  orderId    String?      @unique
-  issue      String       @db.Text
-  status     TicketStatus @default(OPEN)
-  resolution String?      @db.Text
-  reopenNote String?      @db.Text
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-
-  customer User   @relation(fields: [customerId], references: [id])
-  order    Order? @relation(fields: [orderId], references: [id])
-
-  @@map("tickets")
-}
-
-// ═══════════════════════════════════════════
-// PAYMENTS
-// ═══════════════════════════════════════════
-
 enum PaymentStatus {
   PENDING
   SUCCEEDED
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
-}
-
-model Payment {
-  id              String        @id @default(uuid())
-  orderId         String        @unique
-  customerId      String
-  stripePaymentId String?       @unique
-  amount          Float
-  currency        String        @default("usd")
-  status          PaymentStatus @default(PENDING)
-  refundedAmount  Float         @default(0)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  order    Order @relation(fields: [orderId], references: [id])
-  customer User  @relation(fields: [customerId], references: [id])
-
-  @@map("payments")
 }

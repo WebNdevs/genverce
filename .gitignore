@@ -11,19 +11,39 @@ out/
 
 # Environment
 .env
+.env*.local
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+**/.env
+**/.env*.local
+!**/.env.example
 
-# Debug
+# Documentation binaries (.docx)
+*.docx
+**/*.docx
+
+# Uploads and runtime user media
+uploads/
+backend/uploads/
+**/uploads/
+
+# Documentation generator artifacts & screenshots
+doc-generator/
+
+# Debug and logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
+*.log*
+*-logs-*.txt
 
-# IDE
+# IDE and local configs
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
@@ -44,16 +64,3 @@ coverage/
 # Misc
 *.tsbuildinfo
 next-env.d.ts
-
-# Archives
-*.zip
-*.tar.gz
-*.rar
-*.7z
-
-# Uploads
-backend/uploads/
-
-# Temp / Generated Files
-frontend/lint-result.json
-.claude/

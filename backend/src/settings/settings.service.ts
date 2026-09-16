@@ -17,6 +17,7 @@ export class SettingsService {
     } catch {
       return {
         id: SETTINGS_ID,
+        chatProvider: null,
         chatApiUrl: null,
         chatApiKey: null,
         chatModel: null,
@@ -24,7 +25,7 @@ export class SettingsService {
     }
   }
 
-  async update(data: { chatApiUrl?: string; chatApiKey?: string; chatModel?: string }) {
+  async update(data: { chatProvider?: string; chatApiUrl?: string; chatApiKey?: string; chatModel?: string }) {
     try {
       return await this.prisma.siteSettings.upsert({
         where: { id: SETTINGS_ID },
@@ -34,6 +35,7 @@ export class SettingsService {
     } catch {
       return {
         id: SETTINGS_ID,
+        chatProvider: data.chatProvider ?? null,
         chatApiUrl: data.chatApiUrl ?? null,
         chatApiKey: data.chatApiKey ?? null,
         chatModel: data.chatModel ?? null,

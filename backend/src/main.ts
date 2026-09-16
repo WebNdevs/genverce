@@ -8,11 +8,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // Required for Stripe webhook signature verification
   });
-  const expressApp = app.getHttpAdapter().getInstance();
-
-  expressApp.get('/health', (_req: any, res: any) => {
-    res.status(200).json({ status: 'ok' });
-  });
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -29,9 +24,9 @@ async function bootstrap() {
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   const port = process.env.PORT || 4000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Genverce API running on http://0.0.0.0:${port}`);
-  console.log(`📊 GraphQL Playground: http://0.0.0.0:${port}/graphql`);
+  await app.listen(port);
+  console.log(`🚀 Genverce API running on http://localhost:${port}`);
+  console.log(`📊 GraphQL Playground: http://localhost:${port}/graphql`);
 }
 
 bootstrap();

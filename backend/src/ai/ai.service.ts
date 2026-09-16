@@ -1,16 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { writeFileSync, mkdirSync, readFileSync } from 'fs';
-import { extname, join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import OpenAI from 'openai';
 import { SettingsService } from '../settings/settings.service';
 import sharp from 'sharp';
+import { detectProvider } from './ai-providers.config';
+import { GeneratePostParams, GeneratedPostResult } from './dto/generate-post.dto';
 
 interface ChatConfig {
+  providerId: string;
+  providerName: string;
   apiKey: string;
   model: string;
-  baseURL?: string;
+  baseURL: string;
+  extraHeaders?: Record<string, string>;
+  format: 'openai' | 'anthropic';
+}
+
+interface CustomChatInput {
+  chatProvider?: string | null;
+  chatApiUrl?: string | null;
+  chatApiKey?: string | null;
+  chatModel?: string | null;
 }
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string; imageUrl?: string };
@@ -72,31 +84,54 @@ export class AiService {
     private settingsService: SettingsService,
   ) {}
 
-  private async getChatConfig(customChat?: { chatApiUrl?: string | null; chatApiKey?: string | null; chatModel?: string | null }): Promise<ChatConfig> {
+  private async getChatConfig(customChat?: CustomChatInput): Promise<ChatConfig> {
     const settings = await this.settingsService.get();
 
-    // Normalise the stored URL — strip trailing slashes and path suffixes
-    // so both "https://api.openai.com/v1" and
-    // "https://api.openai.com/v1/chat/completions" resolve to a usable base.
+    const rawProvider = (customChat?.chatProvider ?? settings.chatProvider)?.trim() ?? '';
     const rawUrl = (customChat?.chatApiUrl ?? settings.chatApiUrl)?.trim() ?? '';
-    const parsedBaseURL = rawUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '') || '';
-    const baseURL = /anthropic|claude|haiku/i.test(parsedBaseURL) ? undefined : parsedBaseURL || undefined;
+    const rawModel = (customChat?.chatModel ?? settings.chatModel)?.trim() ?? '';
+    const rawKey = (customChat?.chatApiKey ?? settings.chatApiKey)?.trim() ?? '';
 
-    const apiKey = (customChat?.chatApiKey ?? settings.chatApiKey ?? '').trim() || this.configService.get<string>('OPENAI_API_KEY') || '';
+    const providerDef = detectProvider(rawProvider, rawUrl, rawModel, {
+      anthropicKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
+      openaiKey: this.configService.get<string>('OPENAI_API_KEY'),
+    });
 
-    const rawModel = (customChat?.chatModel ?? settings.chatModel ?? '').trim();
-    const model =
-      rawModel && !/anthropic|claude|haiku/i.test(rawModel) ? rawModel : 'gpt-4o-mini';
+    let baseURL = providerDef.defaultBaseURL;
+    if (providerDef.requiresCustomUrl || (rawUrl && providerDef.id === 'custom')) {
+      baseURL = rawUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '') || providerDef.defaultBaseURL;
+    } else if (rawUrl && rawUrl !== providerDef.defaultBaseURL && rawUrl.length > 5) {
+      baseURL = rawUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+    }
 
-    return { apiKey, model, baseURL };
+    let apiKey = rawKey;
+    if (!apiKey) {
+      if (providerDef.id === 'anthropic') {
+        apiKey = this.configService.get<string>('ANTHROPIC_API_KEY') || this.configService.get<string>('OPENAI_API_KEY') || '';
+      } else {
+        apiKey = this.configService.get<string>('OPENAI_API_KEY') || this.configService.get<string>('ANTHROPIC_API_KEY') || '';
+      }
+    }
+
+    const model = rawModel || providerDef.defaultModel;
+
+    return {
+      providerId: providerDef.id,
+      providerName: providerDef.name,
+      apiKey,
+      model,
+      baseURL,
+      extraHeaders: providerDef.extraHeaders,
+      format: providerDef.format,
+    };
   }
 
-  async isEnabled(customChat?: { chatApiUrl?: string | null; chatApiKey?: string | null; chatModel?: string | null }): Promise<boolean> {
+  async isEnabled(customChat?: CustomChatInput): Promise<boolean> {
     const config = await this.getChatConfig(customChat);
     return !!config.apiKey;
   }
 
-  async getActiveChatProviderInfo(customChat?: { chatApiUrl?: string | null; chatApiKey?: string | null; chatModel?: string | null }): Promise<{ provider: 'openai'; model: string; baseURL: string }> {
+  async getActiveChatProviderInfo(customChat?: CustomChatInput): Promise<{ provider: string; model: string; baseURL: string }> {
     const config = await this.getChatConfig(customChat);
     let base = '';
     if (config.baseURL) {
@@ -106,23 +141,17 @@ export class AiService {
         base = config.baseURL;
       }
     }
-    return { provider: 'openai', model: config.model, baseURL: base };
+    return { provider: config.providerName, model: config.model, baseURL: base };
   }
 
   private imageGenerationEnabled(): boolean {
     const raw =
+      process.env.DISABLE_IMAGE_GENERATION ??
+      process.env.IMAGE_GENERATION_DISABLED ??
       this.configService.get<string>('DISABLE_IMAGE_GENERATION') ??
-      this.configService.get<string>('IMAGE_GENERATION_DISABLED') ??
-      'true';
+      this.configService.get<string>('IMAGE_GENERATION_DISABLED');
+    if (raw === undefined || raw === null || raw === '') return true;
     return String(raw).toLowerCase() !== 'true';
-  }
-
-  private isBillingHardLimitError(err: any): boolean {
-    const msg =
-      String(err?.message || '') ||
-      String(err?.error?.message || '') ||
-      String(err?.response?.data?.error?.message || '');
-    return /billing hard limit/i.test(msg) || /\binsufficient[_\s-]?quota\b/i.test(msg);
   }
 
   private isQuotaOrRateLimitError(err: any): boolean {
@@ -147,22 +176,62 @@ export class AiService {
     maxTokens: number,
   ): Promise<string> {
     const budgeted = this.applyInputBudget(systemPrompt, messages);
+
+    // Native Anthropic API handler
+    if (config.format === 'anthropic' && config.baseURL.includes('anthropic.com')) {
+      try {
+        const fetchUrl = `${config.baseURL.replace(/\/$/, '')}/messages`;
+        const res = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey,
+            'anthropic-version': '2023-06-01',
+            ...(config.extraHeaders || {}),
+          },
+          body: JSON.stringify({
+            model: config.model,
+            system: budgeted.systemPrompt,
+            messages: budgeted.messages.map((m) => ({
+              role: m.role === 'user' ? 'user' : 'assistant',
+              content: m.content || ' ',
+            })),
+            max_tokens: maxTokens,
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Anthropic API error (${res.status}): ${errText}`);
+        }
+
+        const data: any = await res.json();
+        const responseText = data?.content?.[0]?.text;
+        if (typeof responseText === 'string') return responseText;
+        throw new Error('Invalid Anthropic API response format');
+      } catch (err) {
+        console.error('[AI Service] Anthropic native call error:', err);
+        throw err;
+      }
+    }
+
+    // OpenAI SDK for OpenAI, Gemini, Grok, DeepSeek, OpenRouter, Custom
     const client = new OpenAI({
-      apiKey: config.apiKey,
-      ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+      apiKey: config.apiKey || 'dummy-key',
+      baseURL: config.baseURL || undefined,
+      defaultHeaders: config.extraHeaders,
     });
 
     const toDataUrlIfLocal = async (url: string) => {
-      const apiUrl = this.configService.get<string>('API_URL') || 'http://localhost:4000';
       const normalized = url.trim();
       const idx = normalized.indexOf('/uploads/');
-      const isLocal = idx >= 0; // Just check if it contains /uploads/ for now
-      
+      const isLocal = idx >= 0;
+
       if (!isLocal) return { url: normalized, mediaType: '' };
 
       const filename = normalized.slice(idx + '/uploads/'.length).split('?')[0].split('#')[0];
       const filePath = join(process.cwd(), 'uploads', filename);
-      
+
       try {
         const buf = readFileSync(filePath);
         const resized = await sharp(buf)
@@ -174,7 +243,7 @@ export class AiService {
         return { url: `data:image/jpeg;base64,${b64}`, mediaType: 'image/jpeg' };
       } catch (err) {
         console.error(`[AI Service] Failed to read local file ${filePath}:`, err);
-        return { url: normalized, mediaType: '' }; // fallback
+        return { url: normalized, mediaType: '' };
       }
     };
 
@@ -202,14 +271,38 @@ export class AiService {
           return { role: m.role, content: parts };
         }),
       );
-      const response = await client.chat.completions.create({
+      const isReasoning = /^o\d/i.test(config.model || '');
+      const basePayload: any = {
         model: config.model,
-        max_completion_tokens: maxTokens,
         messages: [
           { role: 'system', content: budgeted.systemPrompt },
           ...openAiMessages,
         ],
-      });
+      };
+
+      let response: any;
+      try {
+        response = await client.chat.completions.create({
+          ...basePayload,
+          ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+        });
+      } catch (err: any) {
+        const errMsg = String(err?.message || err || '');
+        if (
+          errMsg.includes('max_completion_tokens') ||
+          errMsg.includes('max_tokens') ||
+          errMsg.includes('unrecognized request argument') ||
+          errMsg.includes('extra fields not permitted')
+        ) {
+          response = await client.chat.completions.create({
+            ...basePayload,
+            ...(isReasoning ? { max_tokens: maxTokens } : { max_completion_tokens: maxTokens }),
+          });
+        } else {
+          throw err;
+        }
+      }
+
       return response.choices[0]?.message?.content ?? 'I apologize, I could not generate a response.';
     } catch (error) {
       console.error('[AI Service] OpenAI error:', error);
@@ -221,7 +314,7 @@ export class AiService {
     systemPrompt: string,
     messages: ChatMessage[],
     maxTokens = 512,
-    customChat?: { chatApiUrl?: string | null; chatApiKey?: string | null; chatModel?: string | null },
+    customChat?: CustomChatInput,
   ): Promise<string> {
     const config = await this.getChatConfig(customChat);
     try {
@@ -230,7 +323,7 @@ export class AiService {
       if (!this.isQuotaOrRateLimitError(err)) throw err;
 
       const mini = this.withOpenAiModel(config, 'gpt-4o-mini');
-      if (mini.model !== config.model) {  
+      if (mini.model !== config.model) {
         try {
           return await this.callOpenAI(mini, systemPrompt, messages, Math.min(300, maxTokens));
         } catch {}
@@ -244,331 +337,446 @@ export class AiService {
     topic: string | null,
     message: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    customChat?: { chatApiUrl?: string | null; chatApiKey?: string | null; chatModel?: string | null },
+    customChat?: CustomChatInput,
   ): Promise<boolean> {
+    const text = (message ?? '').trim().toLowerCase().replace(/[^\w\s]/g, '');
+    const greetingPattern = /^(hi|hey+|hello|hola|howdy|greetings|good morning|good afternoon|good evening|whats up|sup|yo|hi there|hello there|how are you)\b/i;
+    if (text.length <= 30 && greetingPattern.test(text)) {
+      return true;
+    }
+
     const config = await this.getChatConfig(customChat);
     const topicLine = topic
-      ? `Their dedicated topic is: "${topic}".`
-      : 'Their area of expertise is defined entirely by their profile above.';
+      ? `DEFINED TOPIC/SCOPE: "${topic}"\nThe assistant is ONLY permitted to answer questions within this topic.`
+      : 'Analyze if the user question is appropriate for a brand ambassador or marketing assistant.';
 
-    // Include recent conversation turns so the classifier can resolve references
-    // like "remember what you said about X?" or "going back to what we discussed"
-    const priorTurns = history.slice(-4); // last 2 exchanges
-    const historyBlock =
-      priorTurns.length > 0
-        ? '\n\nRecent conversation:\n' +
-          priorTurns
-            .map((m) => `${m.role === 'user' ? 'User' : 'Influencer'}: ${this.trimText(m.content ?? '', 400)}`)
-            .join('\n')
-        : '';
+    const system =
+      `You are a topic-relevance classifier for an AI Influencer.\n` +
+      `${topicLine}\n\n` +
+      `INFLUENCER PERSONALITY:\n${influencerSystemPrompt.slice(0, 1500)}\n\n` +
+      `Task: Decide if the user's latest message is on-topic and appropriate for this influencer.\n` +
+      `Greetings, pleasantries, follow-ups, and questions referring to prior chat context are ALWAYS relevant.\n` +
+      `Reply with ONLY "YES" if it is relevant/appropriate, or "NO" if it is completely off-topic or inappropriate.`;
 
-    const classifierSystem =
-      'You are a relevance classifier for an AI influencer. Answer ONLY "yes" or "no". ' +
-      '"yes" = the message is on-topic for this influencer, is a greeting/small talk, ' +
-      'or is a follow-up / reference to something already discussed in the conversation. ' +
-      '"no" = the message is completely unrelated to their expertise AND unrelated to the conversation so far.';
+    const recentHistory = history.slice(-4).map((h) => ({
+      role: h.role,
+      content: h.content,
+    }));
 
-    const userMessage =
-      `Influencer profile:\n${this.trimText(influencerSystemPrompt ?? '', 1500)}\n\n${topicLine}${historyBlock}\n\n` +
-      `Latest user message: "${this.trimText(message ?? '', 600)}"\n\n` +
-      `Is this message relevant to the influencer's area of expertise, a greeting/small talk, ` +
-      `or a follow-up to the conversation above?`;
+    try {
+      const response = await this.callOpenAI(
+        config,
+        system,
+        [...recentHistory, { role: 'user', content: message }],
+        10,
+      );
+      const clean = response.trim().toUpperCase();
+      return clean.startsWith('YES') || clean.includes('YES');
+    } catch (err) {
+      console.error('[AI Service] Topic relevance check error:', err);
+      return true; // Fallback to relevant on error
+    }
+  }
 
-    const text = await this.callOpenAI(config, classifierSystem, [{ role: 'user', content: userMessage }], 10);
-    return text.trim().toLowerCase().startsWith('y');
+  /**
+   * Intelligently analyzes recent conversation messages and extracts high-value,
+   * reusable client and project memories without requiring explicit save commands.
+   */
+  async extractConversationMemory(params: {
+    recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    existingMemory?: { details?: any; facts?: any[] };
+    customChat?: CustomChatInput;
+  }): Promise<any | null> {
+    const { recentMessages, existingMemory, customChat } = params;
+    if (!recentMessages || recentMessages.length === 0) return null;
+
+    const config = await this.getChatConfig(customChat);
+    if (!config.apiKey) return null;
+
+    const existingDetailsSummary = existingMemory?.details
+      ? JSON.stringify(existingMemory.details, null, 2).slice(0, 2000)
+      : '{}';
+
+    const system =
+      `You are an expert conversation memory extraction agent for an AI Influencer Platform.\n` +
+      `Your goal is to automatically identify and extract high-value client and project information that should be remembered for future conversations.\n` +
+      `The client will NEVER explicitly say "remember this". You must use your own judgment to extract genuinely important, reusable facts.\n\n` +
+      `CURRENT STORED MEMORY:\n${existingDetailsSummary}\n\n` +
+      `CRITERIA FOR WHAT TO EXTRACT:\n` +
+      `1. Brand & Profile: Brand name, product name, website, client name, email, target audience, industry, mission.\n` +
+      `2. Project Requirements & Specs: Deliverable count, formats (e.g. 9:16 vertical, 16:9), video length, deadlines, budgets, target platforms (Instagram, TikTok, YouTube).\n` +
+      `3. Preferences & Guidelines: Tone of voice, aesthetic style, recurring instructions, strict DOs and DONTs (e.g. "never use emojis", "always mention 20% discount").\n` +
+      `4. Decisions & Approvals: Approved concepts/scripts, rejected ideas/approaches, selected package/pricing, final decisions.\n` +
+      `5. Technical Context: Tools, integrations, tech stack, links/assets, platforms (e.g. Shopify, Next.js, Figma).\n` +
+      `6. Tasks & Milestones: Pending action items (e.g. "waiting for client logo"), completed deliverables, next steps.\n` +
+      `7. Feedback & Corrections: Specific client critique, revision rules, adjustments made.\n\n` +
+      `DO NOT EXTRACT:\n` +
+      `- Temporary chit-chat, greetings ("hi", "hello"), acknowledgments ("ok", "thanks"), transient debugging, or trivial single-use details.\n` +
+      `- Do not duplicate existing memory if unchanged. If the user updated or corrected previous info (e.g. changed deadline or brand tone), provide the UPDATED value.\n\n` +
+      `OUTPUT FORMAT:\n` +
+      `Return ONLY a raw JSON object (no markdown fence, no other text) with any of these optional keys that apply:\n` +
+      `{\n` +
+      `  "brandAndProfile": { "brandName": "", "productName": "", "website": "", "clientName": "", "clientEmail": "", "targetAudience": "", "tone": "", "industry": "" },\n` +
+      `  "requirements": [{ "key": "e.g. Video Length", "value": "30 seconds" }],\n` +
+      `  "preferences": [{ "key": "e.g. Emoji Policy", "value": "Do not use emojis", "type": "constraint" }],\n` +
+      `  "decisions": [{ "key": "e.g. Script Hook", "value": "Selected Hook B (split screen)", "status": "approved" }],\n` +
+      `  "technicalContext": [{ "key": "e.g. E-commerce Platform", "value": "Shopify" }],\n` +
+      `  "tasks": [{ "task": "e.g. Send brand logo PNG", "status": "pending" }],\n` +
+      `  "feedback": [{ "feedback": "Make CTA more urgent", "adjustment": "Added countdown mention" }],\n` +
+      `  "notes": ["Important persistent note"]\n` +
+      `}\n` +
+      `If there is no new or updated meaningful information to store, return an empty object {}.`;
+
+    try {
+      const msgs: ChatMessage[] = recentMessages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content || '',
+      }));
+
+      const raw = await this.callOpenAI(config, system, msgs, 600);
+      const clean = (raw ?? '').trim();
+      if (!clean || clean === '{}') return null;
+
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   async generateImage(
-    imageApiUrl: string,
-    imageApiKey: string,
-    imageModel: string,
+    customApiUrl: string,
+    customApiKey: string,
+    customModel: string,
     prompt: string,
   ): Promise<string> {
     if (!this.imageGenerationEnabled()) {
-      throw new Error('Image generation is temporarily disabled.');
+      throw new Error('Image generation is temporarily disabled by configuration');
     }
-    const baseURL = imageApiUrl
-      .replace(/\/images\/generations\/?$/, '')
-      .replace(/\/$/, '');
 
-    const client = new OpenAI({ apiKey: imageApiKey, baseURL });
-    const extractTargetSize = (p: string) => {
-      const m1 = p.match(/asset\/platform\/size:\s*.*?(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
-      if (m1) return { w: Number(m1[1]), h: Number(m1[2]) };
-      const m2 = p.match(/\b(\d{3,4})\s*[x×]\s*(\d{3,4})\b/);
-      if (m2) return { w: Number(m2[1]), h: Number(m2[2]) };
-      return null;
-    };
-
-    let target = extractTargetSize(prompt);
-    if (!target) {
-      const lower = (prompt ?? '').toLowerCase();
-      if (/\bwebsite\s+slider\b/.test(lower) || /\bhero\s+banner\b/.test(lower) || /\bwebsite\s+banner\b/.test(lower) || /\bbanner\b/.test(lower)) {
-        target = { w: 1920, h: 600 };
-      }
+    let apiUrl = (customApiUrl || '').trim();
+    if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
+    if (apiUrl && !/\/images\/generations$/i.test(apiUrl)) {
+      apiUrl = `${apiUrl}/images/generations`;
     }
-    const requestedSize = target ? `${target.w}x${target.h}` : '';
-    const targetRatio = target ? target.w / target.h : 0;
 
-    const isBannerPrompt = (() => {
-      const lower = (prompt ?? '').toLowerCase();
-      return /\bwebsite\s+slider\b/.test(lower) || /\bhero\s+banner\b/.test(lower) || /\bwebsite\s+banner\b/.test(lower) || /\bbanner\b/.test(lower);
-    })();
+    const apiKey = (customApiKey || '').trim();
+    const model = (customModel || '').trim() || 'gpt-image-1';
 
-    const composedPrompt =
-      target && (isBannerPrompt || targetRatio >= 2.2)
-        ? `${prompt}\n\nCANVAS:\n- Exact output size: ${target.w}x${target.h} (wide horizontal banner)\n- Design must be composed for this wide layout; do not place a square/portrait design centered on the canvas.\n- Keep all text and logos inside safe margins; no cropped letters.\n`
-        : prompt;
+    if (apiUrl && apiKey) {
+      try {
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            prompt,
+            n: 1,
+            size: '1024x1024',
+          }),
+        });
 
-    const supportedSizesForModel = (model: string): string[] => {
-      const m = (model || '').toLowerCase();
-      if (m.includes('gpt-image-1')) return ['1536x1024', '1024x1024', '1024x1536'];
-      if (m.includes('dall-e-3') || m.includes('dalle-3')) return ['1792x1024', '1024x1024', '1024x1792'];
-      if (m.includes('dall-e-2') || m.includes('dalle-2')) return ['1024x1024'];
-      return ['1792x1024', '1024x1024', '1024x1792'];
-    };
+        if (res.ok) {
+          const data: any = await res.json();
+          // Check for direct URL
+          const url = data?.data?.[0]?.url || data?.url;
+          if (url && typeof url === 'string') return url;
 
-    const pickSupportedSize = (model: string, w: number, h: number) => {
-      const ratio = w / h;
-      const sizes = supportedSizesForModel(model);
-
-      const bestByRatio = (candidates: string[]) => {
-        let best = candidates[0] || '';
-        let bestDelta = Number.POSITIVE_INFINITY;
-        for (const s of candidates) {
-          const mm = s.match(/^(\d+)\s*x\s*(\d+)$/);
-          if (!mm) continue;
-          const sw = Number(mm[1]);
-          const sh = Number(mm[2]);
-          const d = Math.abs(sw / sh - ratio);
-          if (d < bestDelta) {
-            bestDelta = d;
-            best = s;
+          // Check for base64
+          const b64 = data?.data?.[0]?.b64_json || data?.b64_json || data?.data?.[0]?.base64;
+          if (b64 && typeof b64 === 'string') {
+            const filename = `generated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+            const uploadDir = join(process.cwd(), 'uploads');
+            if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
+            const filePath = join(uploadDir, filename);
+            writeFileSync(filePath, Buffer.from(b64, 'base64'));
+            const serverUrl = process.env.API_URL || 'http://localhost:4000';
+            return `${serverUrl}/uploads/${filename}`;
           }
-        }
-        return best;
-      };
-
-      return bestByRatio(sizes);
-    };
-
-    const buildReq = (size?: string) => ({
-      model: imageModel,
-      prompt: composedPrompt,
-      n: 1,
-      ...(imageModel !== 'gpt-image-1' ? { response_format: 'url' } : {}),
-      ...(size ? { size } : {}),
-    });
-
-    let response: any;
-    const isOpenAIBase = baseURL.includes('openai.com');
-    const supported = supportedSizesForModel(imageModel);
-    const sizeToRequest =
-      target && requestedSize
-        ? isOpenAIBase
-          ? supported.includes(requestedSize)
-            ? requestedSize
-            : pickSupportedSize(imageModel, target.w, target.h)
-          : requestedSize
-        : undefined;
-
-    try {
-      response = await (client.images.generate as any)(buildReq(sizeToRequest));
-    } catch (error: any) {
-      if (!target) throw error;
-      if (this.isBillingHardLimitError(error)) throw error;
-      console.error(`[AI Service] First generation attempt with size ${sizeToRequest} failed:`, error.message);
-      try {
-        if (isOpenAIBase) {
-          const fallbackSize = pickSupportedSize(imageModel, target.w, target.h) || '1024x1024';
-          response = await (client.images.generate as any)(buildReq(fallbackSize));
         } else {
-          response = await (client.images.generate as any)(buildReq(undefined));
+          const errText = await res.text();
+          console.warn(`[AI Service] Custom image API warning (${res.status}): ${errText}`);
         }
-      } catch (e2: any) {
-        console.error(`[AI Service] Second generation attempt failed:`, e2.message);
-        if (this.isBillingHardLimitError(e2)) throw e2;
-        response = await (client.images.generate as any)(buildReq('1024x1024'));
+      } catch (err: any) {
+        console.warn('[AI Service] Primary image generation attempt failed, falling back:', err.message);
       }
     }
 
-    const item = response.data?.[0];
-    if (!item) throw new Error('No image returned from API');
-
-    const uploadsDir = join(process.cwd(), 'uploads');
-    mkdirSync(uploadsDir, { recursive: true });
-    const apiUrl = this.configService.get<string>('API_URL') || 'http://localhost:4000';
-
-    const resolveUrl = (u: string) => {
-      const raw = String(u || '').trim();
-      if (!raw) return '';
-      if (raw.startsWith('data:')) return raw;
-      if (/^https?:\/\//i.test(raw)) return raw;
-      try {
-        return new URL(raw, baseURL).toString();
-      } catch {
-        return raw;
+    // Reliable fallback visual generator via Pollinations
+    try {
+      const cleanPrompt = prompt.slice(0, 300).replace(/[^a-zA-Z0-9\s,.-]/g, ' ').trim();
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt || 'cinematic digital art')}?width=1024&height=1024&nologo=true&seed=${Date.now() % 10000}`;
+      const fallbackRes = await fetch(fallbackUrl);
+      if (fallbackRes.ok) {
+        const arrayBuf = await fallbackRes.arrayBuffer();
+        const filename = `generated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+        const uploadDir = join(process.cwd(), 'uploads');
+        if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
+        const filePath = join(uploadDir, filename);
+        writeFileSync(filePath, Buffer.from(arrayBuf));
+        const serverUrl = process.env.API_URL || 'http://localhost:4000';
+        return `${serverUrl}/uploads/${filename}`;
       }
-    };
-
-    const extFromMime = (mime: string) => {
-      const m = (mime || '').toLowerCase();
-      if (m.includes('image/jpeg')) return '.jpg';
-      if (m.includes('image/jpg')) return '.jpg';
-      if (m.includes('image/webp')) return '.webp';
-      if (m.includes('image/gif')) return '.gif';
-      if (m.includes('image/png')) return '.png';
-      return '.png';
-    };
-
-    const ensureTargetDimensions = async (buf: Buffer) => {
-      if (!target || !target.w || !target.h) return { buf, ext: '' };
-      try {
-        const meta = await sharp(buf).metadata();
-        if (meta.width === target.w && meta.height === target.h) return { buf, ext: '' };
-
-        const background = await sharp(buf)
-          .resize(target.w, target.h, { fit: 'cover' })
-          .blur(18)
-          .toBuffer();
-
-        const foreground = await sharp(buf)
-          .resize(target.w, target.h, {
-            fit: 'contain',
-            background: { r: 0, g: 0, b: 0, alpha: 0 },
-          })
-          .toBuffer();
-
-        const out = await sharp(background)
-          .composite([{ input: foreground, gravity: 'center' }])
-          .png()
-          .toBuffer();
-
-        return { buf: out, ext: '.png' };
-      } catch (e) {
-        try {
-          const out = await sharp(buf)
-            .resize(target.w, target.h, { fit: 'fill' })
-            .png()
-            .toBuffer();
-          return { buf: out, ext: '.png' };
-        } catch (e2) {
-          console.error('[AI Service] Failed to enforce target dimensions:', e2);
-          return { buf, ext: '' };
-        }
-      }
-    };
-
-    const saveBuffer = (buf: Buffer, ext: string) => {
-      const safeExt = ext?.startsWith('.') ? ext : '.png';
-      const filename = `${uuidv4()}${safeExt}`;
-      writeFileSync(join(uploadsDir, filename), buf);
-      return `${apiUrl}/uploads/${filename}`;
-    };
-
-    if (item.url) {
-      const resolved = resolveUrl(String(item.url));
-      if (resolved.startsWith('data:')) {
-        const m = resolved.match(/^data:([^;]+);base64,(.+)$/);
-        if (!m) throw new Error('Invalid data URL from image API');
-        const mime = m[1] || 'image/png';
-        const b64 = m[2] || '';
-        const raw = Buffer.from(b64, 'base64');
-        const shaped = await ensureTargetDimensions(raw);
-        const ext = shaped.ext || extFromMime(mime);
-        return saveBuffer(shaped.buf, ext);
-      }
-
-      const download = async (u: string) => {
-        const hasFetch = typeof (globalThis as any).fetch === 'function';
-        if (hasFetch) {
-          const res = await fetch(u, { redirect: 'follow' as any });
-          if (!res.ok) throw new Error(`Failed to download generated image (${res.status})`);
-          const ct = res.headers.get('content-type') || '';
-          const buf = Buffer.from(await res.arrayBuffer());
-          return { ct, buf };
-        }
-
-        const downloadOnce = async (urlStr: string, redirectsLeft: number): Promise<{ ct: string; buf: Buffer }> => {
-          const { request } = await import(urlStr.startsWith('https://') ? 'https' : 'http');
-          return new Promise((resolve, reject) => {
-            const req = request(urlStr, (resp: any) => {
-              const status = Number(resp.statusCode || 0);
-              const loc = String(resp.headers?.location || '');
-              if (status >= 300 && status < 400 && loc && redirectsLeft > 0) {
-                resp.resume();
-                const nextUrl = (() => {
-                  try {
-                    return new URL(loc, urlStr).toString();
-                  } catch {
-                    return loc;
-                  }
-                })();
-                downloadOnce(nextUrl, redirectsLeft - 1).then(resolve).catch(reject);
-                return;
-              }
-              if (status && status >= 400) {
-                resp.resume();
-                reject(new Error(`Failed to download generated image (${status})`));
-                return;
-              }
-              const ct = String(resp.headers?.['content-type'] || '');
-              const chunks: Buffer[] = [];
-              resp.on('data', (c: Buffer) => chunks.push(c));
-              resp.on('end', () => resolve({ ct, buf: Buffer.concat(chunks) }));
-            });
-            req.on('error', reject);
-            req.end();
-          });
-        };
-
-        return downloadOnce(u, 3);
-      };
-
-      const { ct, buf } = await download(resolved);
-
-      let ext = '';
-      try {
-        const parsed = new URL(resolved);
-        ext = extname(parsed.pathname);
-      } catch {}
-      if (!ext) ext = extFromMime(ct);
-
-      const shaped = await ensureTargetDimensions(buf);
-      return saveBuffer(shaped.buf, shaped.ext || ext);
+    } catch (fallbackErr) {
+      console.error('[AI Service] Fallback image generation error:', fallbackErr);
     }
 
-    // gpt-image-1 returns b64_json — save to disk and return a /uploads/ URL
-    if (item.b64_json) {
-      const raw = Buffer.from(item.b64_json, 'base64');
-      const shaped = await ensureTargetDimensions(raw);
-      return saveBuffer(shaped.buf, shaped.ext || '.png');
-    }
-
-    throw new Error('Unrecognised image response format');
+    throw new Error('Image generation could not produce a visual at this time.');
   }
 
   async generateVideoScript(
     influencerName: string,
-    projectBrief: {
+    brief: {
       productName: string;
       keyMessage: string;
       targetAudience: string;
       tone: string;
       inclusions: string[];
-      additionalNotes?: string;
+      additionalNotes: string;
     },
+    customChat?: CustomChatInput,
   ): Promise<string> {
-    const prompt = `You are ${influencerName}, an AI influencer creating a 60-second marketing video script.
+    const config = await this.getChatConfig(customChat);
 
-Product: ${projectBrief.productName}
-Key Message: ${projectBrief.keyMessage}
-Target Audience: ${projectBrief.targetAudience}
-Tone: ${projectBrief.tone}
-Must Include: ${projectBrief.inclusions.join(', ')}
-${projectBrief.additionalNotes ? `Additional Notes: ${projectBrief.additionalNotes}` : ''}
+    const system =
+      `You are ${influencerName}, a professional content creator.\n` +
+      `Write a engaging, high-converting video script based on the client's brief.\n` +
+      `Include timestamps, visual cues in [brackets], and exact voiceover lines.`;
 
-Write a compelling 60-second video script that feels natural and engaging. Include visual direction cues in brackets.`;
-    return this.generateResponse('', [{ role: 'user', content: prompt }], 700);
+    const userPrompt =
+      `PRODUCT: ${brief.productName}\n` +
+      `KEY MESSAGE: ${brief.keyMessage}\n` +
+      `TARGET AUDIENCE: ${brief.targetAudience}\n` +
+      `TONE: ${brief.tone}\n` +
+      `MUST INCLUDE: ${brief.inclusions.join(', ')}\n` +
+      `NOTES: ${brief.additionalNotes}`;
+
+    return this.callOpenAI(
+      config,
+      system,
+      [{ role: 'user', content: userPrompt }],
+      800,
+    );
+  }
+
+  private async getPostConfig(customPost?: {
+    postApiUrl?: string | null;
+    postApiKey?: string | null;
+    postModel?: string | null;
+    chatApiUrl?: string | null;
+    chatApiKey?: string | null;
+    chatModel?: string | null;
+    chatProvider?: string | null;
+  }): Promise<ChatConfig> {
+    const rawPostUrl = customPost?.postApiUrl?.trim();
+    const rawPostKey = customPost?.postApiKey?.trim();
+    const rawPostModel = customPost?.postModel?.trim();
+
+    if (rawPostUrl || rawPostKey || rawPostModel) {
+      const providerDef = detectProvider(customPost?.chatProvider, rawPostUrl, rawPostModel, {
+        anthropicKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
+        openaiKey: this.configService.get<string>('OPENAI_API_KEY'),
+      });
+
+      let baseURL = providerDef.defaultBaseURL;
+      if (providerDef.requiresCustomUrl || (rawPostUrl && providerDef.id === 'custom')) {
+        baseURL = (rawPostUrl || '').replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '') || providerDef.defaultBaseURL;
+      } else if (rawPostUrl && rawPostUrl !== providerDef.defaultBaseURL && rawPostUrl.length > 5) {
+        baseURL = rawPostUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+      }
+
+      let apiKey = rawPostKey || '';
+      if (!apiKey) {
+        if (providerDef.id === 'anthropic') {
+          apiKey = this.configService.get<string>('ANTHROPIC_API_KEY') || this.configService.get<string>('OPENAI_API_KEY') || '';
+        } else {
+          apiKey = this.configService.get<string>('OPENAI_API_KEY') || this.configService.get<string>('ANTHROPIC_API_KEY') || '';
+        }
+      }
+
+      const model = rawPostModel || providerDef.defaultModel;
+
+      return {
+        providerId: providerDef.id,
+        providerName: providerDef.name,
+        apiKey,
+        model,
+        baseURL,
+        extraHeaders: providerDef.extraHeaders,
+        format: providerDef.format,
+      };
+    }
+
+    return this.getChatConfig({
+      chatProvider: customPost?.chatProvider,
+      chatApiUrl: customPost?.chatApiUrl,
+      chatApiKey: customPost?.chatApiKey,
+      chatModel: customPost?.chatModel,
+    });
+  }
+
+  async generatePost(params: GeneratePostParams): Promise<GeneratedPostResult> {
+    const { influencer, aiConfig, input } = params;
+    const influencerName = influencer?.name?.trim() || 'AI Influencer';
+    const personaPrompt = influencer?.systemPrompt?.trim() || '';
+    const contentStyle = influencer?.contentStyle?.trim() || 'Professional & Engaging';
+    const industries = Array.isArray(influencer?.industries)
+      ? influencer.industries.filter(Boolean).join(', ')
+      : typeof influencer?.industries === 'string'
+        ? influencer.industries
+        : '';
+    const platforms = input.platforms && input.platforms.length > 0 ? input.platforms : ['Instagram', 'LinkedIn'];
+    const tone = input.tone?.trim() || influencer?.tone?.trim() || 'Engaging & Authentic';
+
+    const config = await this.getPostConfig(aiConfig || undefined);
+
+    const systemPrompt =
+      `You are ${influencerName}, a premier AI content creator on Genverce.\n` +
+      (personaPrompt ? `YOUR IDENTITY & PERSONALITY:\n${personaPrompt}\n\n` : '') +
+      `CONTENT STYLE: ${contentStyle}\n` +
+      `SPECIALIZED INDUSTRIES: ${industries || 'General Marketing'}\n\n` +
+      `TASK: Execute the Post Creation workflow to craft a complete, high-converting post asset package.\n` +
+      `TARGET PLATFORMS: ${platforms.join(', ')}\n\n` +
+      `You MUST respond ONLY with a raw JSON object matching this exact schema (no markdown fences, no explanatory text):\n` +
+      `{\n` +
+      `  "title": "A captivating, high-impact headline/title (5-12 words)",\n` +
+      `  "caption": "A fully polished, social-ready caption with hook, value body, clear line breaks, tasteful emojis, and strong call-to-action",\n` +
+      `  "content": "The full post content formatted and structured for the target platform(s)",\n` +
+      `  "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4", "#Tag5", "#Tag6", "#Tag7", "#Tag8"],\n` +
+      `  "imagePrompt": "A highly detailed, professional visual generation prompt to create a stunning, cinematic marketing image matching the post theme (photorealistic, 8k, modern aesthetic, clean composition, lighting and color palette details)"\n` +
+      `}`;
+
+    const userPromptLines: string[] = [
+      `TOPIC: ${input.topic}`,
+      input.postType ? `POST TYPE: ${input.postType}` : '',
+      input.brandName ? `BRAND NAME: ${input.brandName}` : '',
+      input.productName ? `PRODUCT / SERVICE: ${input.productName}` : '',
+      input.website ? `WEBSITE: ${input.website}` : '',
+      input.targetAudience ? `TARGET AUDIENCE: ${input.targetAudience}` : '',
+      tone ? `TONE / VOICE: ${tone}` : '',
+      input.callToAction ? `CALL TO ACTION: ${input.callToAction}` : '',
+      input.keywords && input.keywords.length > 0 ? `KEYWORDS: ${input.keywords.join(', ')}` : '',
+      input.inclusions && input.inclusions.length > 0 ? `MUST INCLUDE: ${input.inclusions.join(', ')}` : '',
+      input.visualStyle ? `VISUAL PREFERENCES: ${input.visualStyle}` : '',
+      `PLATFORMS: ${platforms.join(', ')}`,
+    ].filter(Boolean);
+
+    let rawText = '';
+    try {
+      rawText = await this.callOpenAI(
+        config,
+        systemPrompt,
+        [{ role: 'user', content: userPromptLines.join('\n') }],
+        1400,
+      );
+    } catch (err) {
+      console.error('[AI Service] Post text generation error:', err);
+      // If quota/rate limit error, try mini model fallback
+      const mini = this.withOpenAiModel(config, 'gpt-4o-mini');
+      if (mini.model !== config.model) {
+        rawText = await this.callOpenAI(
+          mini,
+          systemPrompt,
+          [{ role: 'user', content: userPromptLines.join('\n') }],
+          1000,
+        );
+      } else {
+        throw err;
+      }
+    }
+
+    // Parse JSON output
+    let parsed: {
+      title?: string;
+      caption?: string;
+      content?: string;
+      hashtags?: string[];
+      imagePrompt?: string;
+    } = {};
+
+    try {
+      const cleanJson = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      parsed = JSON.parse(cleanJson);
+    } catch {
+      // Robust regex extraction fallback if LLM included conversational wrapper
+      const titleMatch = rawText.match(/"title"\s*:\s*"([^"]+)"/i) || rawText.match(/^#+\s*(.+)$/m);
+      const captionMatch = rawText.match(/"caption"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+      const contentMatch = rawText.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+      const promptMatch = rawText.match(/"imagePrompt"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+      const tagsMatch = rawText.match(/#[a-zA-Z0-9_]+/g);
+
+      parsed = {
+        title: titleMatch?.[1] || `${input.topic} — by ${influencerName}`,
+        caption: captionMatch ? captionMatch[1].replace(/\\n/g, '\n') : rawText,
+        content: contentMatch ? contentMatch[1].replace(/\\n/g, '\n') : rawText,
+        hashtags: tagsMatch ? Array.from(new Set(tagsMatch)) : ['#AIInfluencer', '#Marketing', '#Genverce'],
+        imagePrompt: promptMatch ? promptMatch[1] : `Professional, high-quality promotional photo for ${input.topic}, vibrant cinematic lighting, modern minimalist design.`,
+      };
+    }
+
+    const title = parsed.title?.trim() || `${input.topic}`;
+    const caption = parsed.caption?.trim() || parsed.content?.trim() || rawText;
+    const content = parsed.content?.trim() || parsed.caption?.trim() || rawText;
+    const hashtags = Array.isArray(parsed.hashtags) && parsed.hashtags.length > 0
+      ? parsed.hashtags.map((t) => (t.startsWith('#') ? t : `#${t}`)).filter(Boolean)
+      : ['#AI', '#Marketing', '#Genverce'];
+    const imagePrompt = parsed.imagePrompt?.trim() ||
+      `Clean, hyperrealistic visual for ${input.topic}, modern cinematic lighting, 8k resolution, award-winning photography`;
+
+    // Execute Visual Generation if enabled and configured
+    let imageUrl: string | null = null;
+    const shouldGenerateVisual = input.generateVisual !== false;
+    const imgApiUrl = aiConfig?.imageApiUrl?.trim();
+    const imgApiKey = aiConfig?.imageApiKey?.trim();
+    const imgModel = aiConfig?.imageModel?.trim();
+
+    if (shouldGenerateVisual && imgApiUrl && imgApiKey && imgModel && this.imageGenerationEnabled()) {
+      try {
+        imageUrl = await this.generateImage(imgApiUrl, imgApiKey, imgModel, imagePrompt);
+      } catch (imgErr) {
+        console.error('[AI Service] Post visual generation failed, continuing with post copy:', imgErr);
+        imageUrl = null;
+      }
+    }
+
+    const postId = `post_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    return {
+      id: postId,
+      title,
+      caption,
+      content,
+      hashtags,
+      imageUrl,
+      imagePrompt,
+      platforms,
+      topic: input.topic,
+      tone,
+      callToAction: input.callToAction?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+      metadata: {
+        influencerId: influencer?.id,
+        influencerName,
+        postType: input.postType || 'social_post',
+        brandName: input.brandName,
+        productName: input.productName,
+        website: input.website,
+        generatedWithVisual: !!imageUrl,
+      },
+    };
   }
 }
+

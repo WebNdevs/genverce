@@ -1,7 +1,6 @@
 import {
   Controller,
   Post,
-  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -56,18 +55,9 @@ export class UploadController {
       },
     }),
   )
-  uploadFile(@UploadedFile() file: any, @Req() req: Request) {
+  uploadFile(@UploadedFile() file: any) {
     if (!file) throw new BadRequestException('No file provided');
-    const forwardedProto = req.headers['x-forwarded-proto'];
-    const forwardedHost = req.headers['x-forwarded-host'];
-    const requestOrigin =
-      forwardedProto && forwardedHost
-        ? `${String(forwardedProto).split(',')[0]}://${String(forwardedHost).split(',')[0]}`
-        : `${req.protocol}://${req.get('host')}`;
-    const apiUrl =
-      this.config.get<string>('API_URL') ||
-      this.config.get<string>('BACKEND_PUBLIC_URL') ||
-      requestOrigin;
+    const apiUrl = this.config.get<string>('API_URL') || 'http://localhost:4000';
     return {
       url: `${apiUrl}/uploads/${file.filename}`,
       originalName: file.originalname,

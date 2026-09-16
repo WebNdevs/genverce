@@ -1,17 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Briefcase, Search, ArrowLeft, ChevronRight, Wifi, WifiOff, Menu, X,
-  ChevronUp, ChevronDown, Paperclip, MessageSquare,
+  ChevronUp, ChevronDown, Paperclip, MessageSquare, FileText, CornerUpLeft, CheckCircle,
+  AlertCircle, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ImageBubble } from '@/components/ui/image-bubble';
+import { ChatNotesPanel } from '@/components/chat/chat-notes-panel';
+import { MarkdownContent } from '@/components/chat/markdown-content';
+import { ChatReplyBanner, ChatQuotedPreview } from '@/components/chat/chat-reply-ui';
+import { ReplyTarget, parseReplyMessage, serializeReplyMessage } from '@/lib/chat-utils';
 import { GET_INFLUENCER } from '@/graphql/queries/influencer';
 import { GET_MY_CHATS } from '@/graphql/queries/chat';
+import { GET_MY_ORDERS } from '@/graphql/queries/order';
 import { START_CHAT } from '@/graphql/mutations/chat';
 import { MARK_NOTIFICATION_READ } from '@/graphql/mutations/notification';
 import { useAuthStore } from '@/lib/auth';
@@ -156,10 +162,13 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<null | { url: string; name: string; mimeType: string; isImage: boolean }>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyTarget | null>(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -182,6 +191,62 @@ export default function ChatPage() {
     skip: !isAuthenticated,
   });
   const allChats = chatsData?.myChats ?? [];
+
+  const { data: myOrdersData, refetch: refetchOrders } = useQuery(GET_MY_ORDERS, {
+    fetchPolicy: 'cache-and-network',
+    skip: !isAuthenticated,
+  });
+
+  const usageByInfluencer = useMemo(() => {
+    const orders = myOrdersData?.myOrders || [];
+    const validOrders = orders.filter(
+      (o: any) =>
+        ['PAID', 'GENERATING', 'PENDING_REVIEW', 'APPROVED', 'DELIVERED'].includes(o.status),
+    );
+    const map = new Map<string, { isHired: boolean; hasRemainingUsage: boolean; remainingUnits: number; totalOrdered: number; totalDelivered: number }>();
+    for (const o of validOrders) {
+      if (!o.influencerId) continue;
+      let cur = map.get(o.influencerId);
+      if (!cur) {
+        cur = { isHired: true, hasRemainingUsage: false, remainingUnits: 0, totalOrdered: 0, totalDelivered: 0 };
+        map.set(o.influencerId, cur);
+      }
+      let postsDelivered = 0;
+      let imagesDelivered = 0;
+      if (o.projectBrief) {
+        try {
+          const brief = typeof o.projectBrief === 'string' ? JSON.parse(o.projectBrief) : o.projectBrief;
+          if (Array.isArray(brief?.generatedPosts)) postsDelivered = brief.generatedPosts.length;
+          if (Array.isArray(brief?.generatedImages)) imagesDelivered = brief.generatedImages.length;
+        } catch {}
+      }
+      const effective = Math.max(o.videosDelivered || 0, postsDelivered, imagesDelivered);
+      const ordered = o.videosOrdered > 0 ? o.videosOrdered : 1;
+      const deliveredForOrder = Math.min(ordered, effective);
+      cur.totalOrdered += ordered;
+      cur.totalDelivered += deliveredForOrder;
+    }
+
+    map.forEach((cur) => {
+      cur.remainingUnits = Math.max(0, cur.totalOrdered - cur.totalDelivered);
+      cur.hasRemainingUsage = cur.remainingUnits > 0;
+    });
+    return map;
+  }, [myOrdersData]);
+
+  const hireAndUsage = useMemo(() => {
+    return usageByInfluencer.get(influencerId) || {
+      isHired: false,
+      hasRemainingUsage: false,
+      remainingUnits: 0,
+      totalOrdered: 0,
+      totalDelivered: 0,
+    };
+  }, [usageByInfluencer, influencerId]);
+
+  const isHired = hireAndUsage.isHired;
+  const hasRemainingUsage = hireAndUsage.hasRemainingUsage;
+  const remainingUnits = hireAndUsage.remainingUnits;
 
   const filteredChats = sidebarSearch.trim()
     ? allChats.filter((c: any) =>
@@ -212,20 +277,27 @@ export default function ChatPage() {
       joinRoom(realChatId);
       refetchChats();
     },
+    onError: (err) => {
+      console.error('[ChatPage] startChat error:', err);
+      toast({ title: 'Chat initialization error', description: err.message, variant: 'error' });
+    },
   });
+
+  const chatInitializedFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
     if (!isAuthenticated) { router.push('/login'); return; }
-    if (!token || chatInitialized.current) return;
-    chatInitialized.current = true;
+    if (!token || !influencerId) return;
+
+    if (chatInitializedFor.current === influencerId) return;
+    chatInitializedFor.current = influencerId;
 
     const socket = connectSocket(token);
     setConnected(socket.connected);
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       setConnected(true);
-      // Re-join room on every reconnect so events are never missed
       if (chatIdRef.current) {
         joinRoom(chatIdRef.current);
         try {
@@ -235,18 +307,26 @@ export default function ChatPage() {
           if (user?.id) socket.emit('setActiveChat', { chatId: chatIdRef.current, userId: user.id });
         } catch {}
       }
-    });
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('newMessage', (msg: Message) => {
+    };
+
+    const onDisconnect = () => setConnected(false);
+    const onNewMessage = (msg: Message) => {
       if (msg.chatId !== chatIdRef.current) return;
       setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
       refetchChats();
-    });
-    socket.on('typing', ({ isTyping: t }: { isTyping: boolean }) => setIsTyping(t));
-    socket.on('chatError', ({ message }: { message: string }) => {
+      refetchOrders();
+    };
+    const onTyping = ({ isTyping: t }: { isTyping: boolean }) => setIsTyping(t);
+    const onChatError = ({ message }: { message: string }) => {
       setIsTyping(false);
       toast({ title: 'Chat error', description: message, variant: 'error' });
-    });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('newMessage', onNewMessage);
+    socket.on('typing', onTyping);
+    socket.on('chatError', onChatError);
 
     startChat({ variables: { influencerId } });
 
@@ -259,12 +339,12 @@ export default function ChatPage() {
       try {
         socket.emit('clearActiveChat', {});
       } catch {}
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('newMessage');
-      socket.off('typing');
-      socket.off('chatError');
-      chatInitialized.current = false;
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('newMessage', onNewMessage);
+      socket.off('typing', onTyping);
+      socket.off('chatError', onChatError);
+      chatInitializedFor.current = null;
     };
   }, [hydrated, isAuthenticated, token, influencerId, user?.id]);
 
@@ -287,14 +367,39 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
+  const handleReply = (msg: Message) => {
+    const isUser = msg.role === 'USER';
+    const senderName = isUser ? 'You' : influencerName;
+    const { body } = parseReplyMessage(msg.content);
+    setReplyingTo({
+      id: msg.id,
+      role: msg.role,
+      senderName,
+      content: body,
+      imageUrl: msg.imageUrl,
+    });
+    inputRef.current?.focus();
+  };
+
+  const scrollToMessage = (msgId?: string) => {
+    if (!msgId) return;
+    const el = msgRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(msgId);
+      setTimeout(() => setHighlightedMsgId(null), 2500);
+    }
+  };
+
   const sendMessage = () => {
     if ((!input.trim() && !pendingUpload) || !chatId || !connected || uploading) return;
     const base = input.trim();
+    const withReply = serializeReplyMessage(base, replyingTo);
     const content = pendingUpload
       ? pendingUpload.isImage
-        ? (base || `Image: ${pendingUpload.name}`)
-        : `${base ? `${base}\n\n` : ''}File: ${pendingUpload.name}\n${pendingUpload.url}`
-      : base;
+        ? (withReply || `Image: ${pendingUpload.name}`)
+        : `${withReply ? `${withReply}\n\n` : ''}File: ${pendingUpload.name}\n${pendingUpload.url}`
+      : withReply;
     connectSocket(token!).emit('sendMessage', {
       chatId,
       influencerId,
@@ -304,6 +409,10 @@ export default function ChatPage() {
     });
     setInput('');
     setPendingUpload(null);
+    setReplyingTo(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     inputRef.current?.focus();
   };
 
@@ -353,8 +462,11 @@ export default function ChatPage() {
     await uploadFile(file);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   const q = searchQuery.trim().toLowerCase();
@@ -441,6 +553,38 @@ export default function ChatPage() {
                       </span>
                     )}
                   </div>
+                  {/* Hired & Remaining Usage Status Badge */}
+                  {(() => {
+                    const u = usageByInfluencer.get(c.influencerId);
+                    if (u?.isHired) {
+                      if (u.remainingUnits > 0) {
+                        return (
+                          <div className="mb-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              Hired · {u.remainingUnits} left
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="mb-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            Hired · 0 left
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="mb-1">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface border border-border text-text-secondary">
+                          <span className="w-1.5 h-1.5 rounded-full bg-text-secondary/50" />
+                          Not Hired
+                        </span>
+                      </div>
+                    );
+                  })()}
                   {lastMsg ? (
                     <p className="text-xs text-text-secondary truncate">
                       {lastMsg.role === 'USER' ? 'You: ' : ''}{lastMsg.content}
@@ -467,107 +611,163 @@ export default function ChatPage() {
 
   /* ── render ──────────────────────────────────────────────── */
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Top bar (slim, replaces full Navbar) */}
-      <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-surface flex-shrink-0 z-10">
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-text-secondary hover:text-text-primary">
-            <ArrowLeft size={20} />
-          </Link>
-          <Link href="/" className="font-bold text-base gradient-text hidden sm:block">Genverce</Link>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <Link
-            href="/messages"
-            className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-background/70 text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors"
-            title="Messages"
-            aria-label="Messages"
-          >
-            <MessageSquare size={16} />
-            {unreadMessageCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-brand text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-              </span>
-            )}
-          </Link>
-          {connected
-            ? <><Wifi size={14} className="text-success" /><span className="text-success hidden sm:inline">Connected</span></>
-            : <><WifiOff size={14} className="text-error" /><span className="text-error hidden sm:inline">Reconnecting…</span></>}
-        </div>
-        {/* Mobile: open sidebar */}
-        <button className="lg:hidden text-text-secondary hover:text-text-primary" onClick={() => setSidebarOpen(true)}>
-          <Menu size={20} />
-        </button>
-      </header>
+    <div className="flex h-full bg-background overflow-hidden">
 
-      {/* Body: sidebar + chat */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Desktop sidebar */}
+      <div className="hidden lg:flex flex-col w-72 xl:w-80 flex-shrink-0 h-full">
+        {Sidebar}
+      </div>
 
-        {/* Desktop sidebar */}
-        <div className="hidden lg:flex flex-col w-72 xl:w-80 flex-shrink-0 h-full">
-          {Sidebar}
-        </div>
+      {/* Mobile sidebar overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <motion.div
+              initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
+              transition={{ type: 'tween', duration: 0.22 }}
+              className="fixed left-0 top-0 bottom-0 w-72 z-40 lg:hidden"
+            >
+              {Sidebar}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-        {/* Mobile sidebar overlay */}
-        <AnimatePresence>
-          {sidebarOpen && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-              />
-              <motion.div
-                initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-                transition={{ type: 'tween', duration: 0.22 }}
-                className="fixed left-0 top-0 bottom-0 w-72 z-40 lg:hidden"
-              >
-                {Sidebar}
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+      {/* Main chat panel */}
+      <main className="flex flex-col flex-1 min-w-0 h-full border-l border-border">
 
-        {/* Main chat panel */}
-        <main className="flex flex-col flex-1 min-w-0 h-full border-l border-border">
-
-          {/* Chat header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface flex-shrink-0">
-            <button className="lg:hidden text-text-secondary hover:text-text-primary mr-1" onClick={() => setSidebarOpen(true)}>
-              <Menu size={18} />
-            </button>
-            <Avatar name={influencerName} src={influencer?.avatar} size={10} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm truncate">{influencerName}</p>
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${influencerInactive ? 'bg-error' : 'bg-success'}`} />
-              </div>
-              <p className="text-xs text-text-secondary truncate">{influencer?.contentStyle ?? ''}</p>
+        {/* Chat header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface flex-shrink-0">
+          <button className="lg:hidden text-text-secondary hover:text-text-primary mr-1" onClick={() => setSidebarOpen(true)}>
+            <Menu size={18} />
+          </button>
+          <Avatar name={influencerName} src={influencer?.avatar} size={10} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-semibold text-sm truncate">{influencerName}</p>
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${influencerInactive ? 'bg-error' : 'bg-success'}`} />
+              {/* Header Status Badge */}
+              {isHired ? (
+                hasRemainingUsage ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    <CheckCircle size={11} className="text-emerald-400 flex-shrink-0" />
+                    <span>Hired · {remainingUnits} of {hireAndUsage.totalOrdered} uses remaining</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                    <AlertCircle size={11} className="text-amber-400 flex-shrink-0" />
+                    <span>Hired · 0 uses remaining</span>
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface border border-border text-text-secondary">
+                  <span className="w-1.5 h-1.5 rounded-full bg-text-secondary/50 flex-shrink-0" />
+                  <span>Not Hired · 0 uses remaining</span>
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={searchOpen ? closeSearch : openSearch}
-                className={`p-1.5 rounded-lg border border-border transition-colors ${searchOpen ? 'border-brand text-brand' : 'text-text-secondary hover:text-text-primary hover:border-brand/40'}`}
-                title="Search messages"
-              >
-                <Search size={15} />
-              </button>
-              <Link
-                href={`/influencers/${influencerId}`}
-                className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors"
-              >
-                View Profile
-              </Link>
-              <Link
-                href={influencerInactive ? '#' : `/order/${influencerId}`}
-                aria-disabled={influencerInactive}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand text-white hover:bg-brand-hover transition-colors ${influencerInactive ? 'pointer-events-none opacity-50' : ''}`}
-              >
-                <Briefcase size={13} />
-                Hire
-              </Link>
+            <div className="flex items-center gap-2 text-xs text-text-secondary mt-0.5">
+              <span>{influencer?.contentStyle || 'AI Influencer'}</span>
+              {isHired && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-[11px] text-text-secondary">
+                    {hireAndUsage.totalDelivered} of {hireAndUsage.totalOrdered} deliverables completed
+                  </span>
+                </>
+              )}
             </div>
           </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <button
+              onClick={() => setNotesOpen(!notesOpen)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                notesOpen
+                  ? 'border-brand bg-brand/10 text-brand-light font-semibold'
+                  : 'border-border text-text-secondary hover:text-text-primary hover:border-brand/40'
+              }`}
+              title="Private Notes"
+            >
+              <FileText size={15} />
+              <span className="hidden sm:inline">Notes</span>
+            </button>
+            <button
+              onClick={searchOpen ? closeSearch : openSearch}
+              className={`p-1.5 rounded-lg border border-border transition-colors ${searchOpen ? 'border-brand text-brand' : 'text-text-secondary hover:text-text-primary hover:border-brand/40'}`}
+              title="Search messages"
+            >
+              <Search size={15} />
+            </button>
+            <Link
+              href={`/influencers/${influencerId}`}
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors"
+            >
+              View Profile
+            </Link>
+            {isHired ? (
+              hasRemainingUsage ? (
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    href={`/dashboard/orders/influencer/${influencerId}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                    title={`You have ${remainingUnits} remaining deliverable(s). Click to view deliverables and orders.`}
+                  >
+                    <CheckCircle size={13} className="text-emerald-400" />
+                    <span>Hired · {remainingUnits} left</span>
+                  </Link>
+                  <Link
+                    href={influencerInactive ? '#' : `/order/${influencerId}?mode=add-usage`}
+                    aria-disabled={influencerInactive}
+                    className={`hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-surface border border-border text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors ${influencerInactive ? 'pointer-events-none opacity-50' : ''}`}
+                    title="Add more usage to your project"
+                  >
+                    <Plus size={13} />
+                    <span>Add Usage</span>
+                  </Link>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    href={`/dashboard/orders/influencer/${influencerId}`}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-colors"
+                    title="All deliverables used in current plan. Click to view orders."
+                  >
+                    <AlertCircle size={13} className="text-amber-400" />
+                    <span>Hired · 0 Left</span>
+                  </Link>
+                  <Link
+                    href={influencerInactive ? '#' : `/order/${influencerId}?mode=add-usage`}
+                    aria-disabled={influencerInactive}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-hover transition-colors shadow-sm ${influencerInactive ? 'pointer-events-none opacity-50' : ''}`}
+                    title="Purchase additional usage or hire a new package"
+                  >
+                    <Plus size={13} />
+                    <span>Add Usage</span>
+                  </Link>
+                </div>
+              )
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-secondary">
+                  Not Hired
+                </span>
+                <Link
+                  href={influencerInactive ? '#' : `/order/${influencerId}`}
+                  aria-disabled={influencerInactive}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-hover transition-colors ${influencerInactive ? 'pointer-events-none opacity-50' : ''}`}
+                >
+                  <Briefcase size={13} />
+                  Hire
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
 
           {/* Search bar */}
           <AnimatePresence>
@@ -648,6 +848,8 @@ export default function ChatPage() {
                 const isUser = msg.role === 'USER';
                 const isMatch = q && msg.content.toLowerCase().includes(q);
                 const isActiveMatch = isMatch && matchedIds[clampedIndex] === msg.id;
+                const isHighlighted = highlightedMsgId === msg.id;
+                const { reply, body } = parseReplyMessage(msg.content);
 
                 return (
                   <motion.div
@@ -665,29 +867,57 @@ export default function ChatPage() {
                       {!isUser && (
                         <span className="text-[11px] text-text-secondary/60 mb-1 ml-1">{influencerName}</span>
                       )}
-                      <div className={`${msg.imageUrl ? 'p-1.5' : 'px-4 py-2.5'} text-sm leading-relaxed break-words transition-shadow ${
+                      <div className={`${msg.imageUrl ? 'p-1.5' : 'px-4 py-2.5'} text-sm leading-relaxed break-words transition-all duration-300 ${
                         isUser
                           ? 'bg-brand text-white rounded-2xl rounded-br-sm'
                           : 'bg-surface border border-border text-text-primary rounded-2xl rounded-bl-sm'
-                      } ${isActiveMatch ? 'ring-2 ring-brand ring-offset-1 ring-offset-background' : ''}`}>
+                      } ${isActiveMatch ? 'ring-2 ring-brand ring-offset-1 ring-offset-background' : ''} ${
+                        isHighlighted ? 'ring-2 ring-brand-light ring-offset-2 ring-offset-background shadow-lg shadow-brand/20 scale-[1.01]' : ''
+                      }`}>
+                        {reply && (
+                          <ChatQuotedPreview
+                            reply={reply}
+                            isUser={isUser}
+                            onScrollToMessage={scrollToMessage}
+                          />
+                        )}
                         {msg.imageUrl ? (
                           <div className="flex flex-col gap-2">
-                            {shouldShowImageText(msg.content) ? (
-                              <div className="px-2 pt-1 whitespace-pre-wrap">
-                                {highlight(msg.content, searchQuery.trim())}
+                            {shouldShowImageText(body) ? (
+                              <div className="px-2 pt-1">
+                                <MarkdownContent
+                                  content={body}
+                                  isUser={isUser}
+                                  searchQuery={searchQuery.trim()}
+                                />
                               </div>
                             ) : null}
-                            <ImageBubble src={msg.imageUrl} alt={msg.content || 'Image'} msgId={msg.id} />
+                            <ImageBubble src={msg.imageUrl} alt={body || 'Image'} msgId={msg.id} />
                           </div>
-                        ) : isFileMessage(msg.content) ? (
-                          renderFileMessage(msg.content)
+                        ) : isFileMessage(body) ? (
+                          renderFileMessage(body)
                         ) : (
-                          highlight(msg.content, searchQuery.trim())
+                          <MarkdownContent
+                            content={body}
+                            isUser={isUser}
+                            searchQuery={searchQuery.trim()}
+                          />
                         )}
                       </div>
-                      <span className="text-[10px] text-text-secondary/50 mt-1 mx-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {fmtTime(msg.createdAt)}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-1 mx-1">
+                        <button
+                          type="button"
+                          onClick={() => handleReply(msg)}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all px-1.5 py-0.5 rounded hover:bg-surface border border-transparent hover:border-border text-text-secondary/70 hover:text-text-primary flex items-center gap-1 text-[11px]"
+                          title="Reply to this message"
+                        >
+                          <CornerUpLeft size={12} />
+                          <span className="text-[10px]">Reply</span>
+                        </button>
+                        <span className="text-[10px] text-text-secondary/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {fmtTime(msg.createdAt)}
+                        </span>
+                      </div>
                     </div>
                     {isUser && (
                       <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-xs font-bold gradient-text flex-shrink-0">
@@ -722,6 +952,14 @@ export default function ChatPage() {
           {/* Input area */}
           <div className="flex-shrink-0 border-t border-border bg-surface px-4 py-3">
             <div className="max-w-4xl mx-auto">
+              <AnimatePresence>
+                {replyingTo && (
+                  <ChatReplyBanner
+                    replyingTo={replyingTo}
+                    onCancel={() => setReplyingTo(null)}
+                  />
+                )}
+              </AnimatePresence>
               {pendingUpload ? (
                 <div className="flex items-center justify-between gap-3 mb-2 px-3 py-2 rounded-xl border border-border bg-background">
                   <div className="min-w-0">
@@ -785,7 +1023,14 @@ export default function ChatPage() {
             </p>
           </div>
         </main>
-      </div>
+
+      {/* Upwork-style Private Notes Drawer Panel */}
+      <ChatNotesPanel
+        chatId={chatId}
+        isOpen={notesOpen}
+        onClose={() => setNotesOpen(false)}
+        influencerName={influencerName}
+      />
     </div>
   );
 }

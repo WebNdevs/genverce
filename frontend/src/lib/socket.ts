@@ -7,7 +7,7 @@ export function getSocket(): Socket {
   if (!socket) {
     socket = io(`${process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000'}/chat`, {
       withCredentials: true,
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: false,
     });
   }

@@ -3,6 +3,7 @@ import { IsOptional, IsString } from 'class-validator';
 
 @InputType()
 export class AIConfigInput {
+  @Field({ nullable: true }) @IsOptional() @IsString() chatProvider?: string;
   @Field({ nullable: true }) @IsOptional() @IsString() chatApiUrl?: string;
   @Field({ nullable: true }) @IsOptional() @IsString() chatApiKey?: string;
   @Field({ nullable: true }) @IsOptional() @IsString() chatModel?: string;
@@ -30,6 +31,7 @@ export class AIConfigInput {
 
 @ObjectType()
 export class AIConfigModel {
+  @Field({ nullable: true }) chatProvider?: string;
   @Field({ nullable: true }) chatApiUrl?: string;
   @Field({ nullable: true }) chatApiKey?: string;
   @Field({ nullable: true }) chatModel?: string;

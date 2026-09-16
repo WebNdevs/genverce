@@ -8,22 +8,18 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor(private readonly configService: ConfigService) {
-    const urlFromEnv = process.env.DATABASE_URL;
-
     const host = process.env.DB_HOST;
     const user = process.env.DB_USER;
     const pass = process.env.DB_PASSWORD ?? '';
     const name = process.env.DB_NAME;
     const port = process.env.DB_PORT || '3306';
 
-    const scheme = process.env.DB_SCHEME || 'mysql';
-
-    let url = urlFromEnv;
-    if (!url && host && user && name) {
+    let url = process.env.DATABASE_URL;
+    if (host && user && name) {
       const encodedUser = encodeURIComponent(user);
       const encodedPass = encodeURIComponent(pass);
       const passPart = encodedPass ? `:${encodedPass}` : '';
-      url = `${scheme}://${encodedUser}${passPart}@${host}:${port}/${name}`;
+      url = `mysql://${encodedUser}${passPart}@${host}:${port}/${name}`;
     }
 
     super({

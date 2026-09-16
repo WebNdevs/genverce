@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -23,54 +22,12 @@ interface RevenueChartProps {
 export default function RevenueChart({
     data,
 }: RevenueChartProps) {
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const [mounted, setMounted] = useState(false);
-    const [isChartReady, setIsChartReady] = useState(false);
-    const gradientId = useId().replace(/:/g, '');
-
-    const safeData = useMemo(
-        () =>
-            Array.isArray(data)
-                ? data.map((item) => ({
-                      month: item.month,
-                      revenue: Number(item.revenue) || 0,
-                  }))
-                : [],
-        [data]
-    );
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    useEffect(() => {
-        if (!mounted || !containerRef.current) return;
-
-        const element = containerRef.current;
-        const updateReadyState = () => {
-            const { width, height } = element.getBoundingClientRect();
-            setIsChartReady(width > 0 && height > 0);
-        };
-
-        updateReadyState();
-
-        const observer = new ResizeObserver(() => {
-            updateReadyState();
-        });
-
-        observer.observe(element);
-
-        return () => {
-            observer.disconnect();
-        };
-    }, [mounted]);
-
     return (
         <div className="glass-card p-6 mb-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h3 className="text-xl font-semibold">
+                    <h3 className="text-xl font-semibold text-text-primary">
                         Revenue Trend
                     </h3>
 
@@ -79,17 +36,16 @@ export default function RevenueChart({
                     </p>
                 </div>
 
-                <div className="glass-card px-3 py-2 text-sm">
+                <div className="glass-card px-3 py-2 text-sm text-text-primary">
                     Monthly
                 </div>
             </div>
 
             {/* Chart */}
-            <div ref={containerRef} className="h-[450px] min-h-[450px] w-full min-w-0">
-                {mounted && isChartReady ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <div className="h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                        data={safeData}
+                        data={data}
                         margin={{
                             top: 40,
                             right: 60,
@@ -100,7 +56,7 @@ export default function RevenueChart({
                         {/* Gradient Fill */}
                         <defs>
                             <linearGradient
-                                id={gradientId}
+                                id="revenueFill"
                                 x1="0"
                                 y1="0"
                                 x2="0"
@@ -108,20 +64,20 @@ export default function RevenueChart({
                             >
                                 <stop
                                     offset="5%"
-                                    stopColor="#8B5CF6"
-                                    stopOpacity={0.35}
+                                    stopColor="#6366F1"
+                                    stopOpacity={0.4}
                                 />
                                 <stop
                                     offset="95%"
-                                    stopColor="#8B5CF6"
-                                    stopOpacity={0}
+                                    stopColor="#6366F1"
+                                    stopOpacity={0.02}
                                 />
                             </linearGradient>
                         </defs>
 
                         {/* Grid */}
                         <CartesianGrid
-                            stroke="#1f2937"
+                            stroke="var(--border)"
                             strokeDasharray="3 3"
                             vertical={false}
                         />
@@ -133,7 +89,7 @@ export default function RevenueChart({
                                 left: 30,
                                 right: 30,
                             }}
-                            tick={{ fill: '#94a3b8', fontSize: 13 }}
+                            tick={{ fill: 'var(--text-secondary)', fontSize: 13 }}
                             axisLine={false}
                             tickLine={false}
                         />
@@ -141,23 +97,33 @@ export default function RevenueChart({
                         {/* Y Axis */}
                         <YAxis
                             width={55}
-                            tickFormatter={(value) => `$${value / 1000}K`}
-                            tick={{ fill: '#94a3b8' }}
+                            tickFormatter={(value) => `$${(Number(value) || 0) / 1000}K`}
+                            tick={{ fill: 'var(--text-secondary)', fontSize: 13 }}
                             axisLine={false}
                             tickLine={false}
                         />
 
                         {/* Tooltip */}
                         <Tooltip
-                            formatter={(value: number) => [
-                                `$${value.toLocaleString()}`,
+                            formatter={(value: any) => [
+                                `$${Number(value || 0).toLocaleString()}`,
                                 'Revenue',
                             ]}
                             contentStyle={{
-                                background: '#0B1020',
-                                border: '1px solid #1e293b',
+                                backgroundColor: 'var(--surface)',
+                                borderColor: 'var(--border)',
                                 borderRadius: '12px',
-                                color: '#fff',
+                                color: 'var(--text-primary)',
+                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+                            }}
+                            itemStyle={{
+                                color: 'var(--text-primary)',
+                                fontWeight: 500,
+                            }}
+                            labelStyle={{
+                                color: 'var(--text-secondary)',
+                                fontWeight: 600,
+                                marginBottom: '4px',
                             }}
                         />
 
@@ -165,29 +131,33 @@ export default function RevenueChart({
                         <Legend
                             verticalAlign="bottom"
                             height={40}
+                            wrapperStyle={{
+                                color: 'var(--text-secondary)',
+                            }}
                         />
 
                         {/* Area */}
                         <Area
                             type="monotone"
                             dataKey="revenue"
-                            stroke="#8B5CF6"
+                            stroke="#6366F1"
                             strokeWidth={3}
-                            fill={`url(#${gradientId})`}
+                            fill="url(#revenueFill)"
                             activeDot={{
                                 r: 6,
                                 strokeWidth: 2,
-                                fill: '#8B5CF6',
+                                fill: '#6366F1',
+                                stroke: 'var(--surface)',
                             }}
                         >
                             <LabelList
                                 dataKey="revenue"
                                 position="top"
-                                formatter={(value: number) =>
-                                    `$${(value / 1000).toFixed(1)}K`
+                                formatter={(value: any) =>
+                                    `$${((Number(value) || 0) / 1000).toFixed(1)}K`
                                 }
                                 style={{
-                                    fill: '#ffffff',
+                                    fill: 'var(--text-primary)',
                                     fontSize: 12,
                                     fontWeight: 600,
                                 }}
@@ -195,7 +165,6 @@ export default function RevenueChart({
                         </Area>
                     </AreaChart>
                 </ResponsiveContainer>
-                ) : null}
             </div>
         </div>
     );

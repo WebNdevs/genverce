@@ -17,6 +17,7 @@ import {
 import { useState, useLayoutEffect } from 'react';
 import { useQuery } from '@apollo/client';
 import { NotificationBell } from '@/components/ui/notification-bell';
+import { ThemeToggle, MobileThemeToggle } from '@/components/ui/theme-toggle';
 import { GET_MY_CHATS } from '@/graphql/queries/chat';
 import { useNotificationStore } from '@/lib/notifications';
 
@@ -41,14 +42,18 @@ export function Navbar() {
   const unreadMessageCount = notifications.filter(
     (n) => !n.read && (n.href.startsWith('/chat/') || n.href === '/messages')
   ).length;
+  const publicNavLinks = [
+    { href: '/influencers', label: 'Explore Influencers' },
+    { href: '/custom-avatar/request', label: 'Request Custom AI Influencer' },
+  ];
+
   const navLinks =
     !mounted
-      ? []
+      ? publicNavLinks
       : isAuthenticated && role === 'ADMIN'
       ? []
       : [
-          { href: '/influencers', label: 'Explore Influencers' },
-          { href: '/custom-avatar/request', label: 'Request Custom AI Influencer' },
+          ...publicNavLinks,
           ...(isAuthenticated
             ? [
                 { href: '/dashboard', label: 'Dashboard' },
@@ -60,7 +65,7 @@ export function Navbar() {
         ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-surface/90 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -92,10 +97,9 @@ export function Navbar() {
           </div>
 
           {/* Auth Buttons */}
-          <div className="hidden md:flex items-center gap-3">
-            {!mounted ? (
-              <div className="w-32 h-8 rounded-lg bg-surface animate-pulse" />
-            ) : isAuthenticated ? (
+          <div className="hidden md:flex items-center gap-3 min-h-[36px]">
+            <ThemeToggle />
+            {mounted && isAuthenticated ? (
               <div className="flex items-center gap-3">
                 {/* Messages link */}
                 {role !== 'ADMIN' && (
@@ -142,7 +146,7 @@ export function Navbar() {
                 </button>
               </div>
             ) : (
-              <>
+              <div className="flex items-center gap-3">
                 <Link
                   href="/login"
                   className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -152,12 +156,13 @@ export function Navbar() {
                 <Link href="/signup" className="btn-brand text-sm py-2 px-4">
                   Sign Up
                 </Link>
-              </>
+              </div>
             )}
           </div>
 
-          {/* Mobile: notification bell + menu toggle */}
+          {/* Mobile: notification bell + theme toggle + menu toggle */}
           <div className="flex items-center gap-2 md:hidden">
+            <ThemeToggle />
             {mounted && isAuthenticated && role !== 'ADMIN' && (
               <Link
                 href="/messages"
@@ -180,7 +185,7 @@ export function Navbar() {
             )}
             {mounted && isAuthenticated && <NotificationBell />}
             <button
-              className="text-text-primary"
+              className="text-text-primary p-1"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X size={24} /> : <Menu size={24} />}
@@ -194,7 +199,6 @@ export function Navbar() {
         isOpen={mobileOpen}
         links={navLinks}
         isAuthenticated={isAuthenticated}
-        user={user}
         role={role}
         onLogout={logout}
         onClose={() => setMobileOpen(false)}
@@ -208,7 +212,6 @@ function AnimatedMobileMenu({
   isOpen,
   links,
   isAuthenticated,
-  user,
   role,
   onLogout,
   onClose,
@@ -217,7 +220,6 @@ function AnimatedMobileMenu({
   isOpen: boolean;
   links: { href: string; label: string }[];
   isAuthenticated: boolean;
-  user: any;
   role: string | undefined;
   onLogout: () => void;
   onClose: () => void;
@@ -248,9 +250,10 @@ function AnimatedMobileMenu({
             {link.label}
           </Link>
         ))}
-        <div className="border-t border-border pt-3 mt-3">
+        <div className="border-t border-border pt-3 mt-3 space-y-3">
+          <MobileThemeToggle onClose={onClose} />
           {isAuthenticated ? (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2 border-t border-border">
               <Link
                 href="/dashboard"
                 onClick={onClose}
@@ -283,7 +286,7 @@ function AnimatedMobileMenu({
               <Link
                 href="/notifications"
                 onClick={onClose}
-                className="flex items-center gap-2 py-2 text-sm text-text-secondary hover:text-text-primary"
+                className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary"
               >
                 <Bell size={16} /> Notifications
               </Link>
@@ -295,7 +298,7 @@ function AnimatedMobileMenu({
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2 border-t border-border">
               <Link
                 href="/login"
                 onClick={onClose}

@@ -60,9 +60,7 @@ export function NotificationBell() {
   const handleMarkAllRead = () => {
     const unreadGeneral = general.filter((n) => !n.read);
     unreadGeneral.forEach((n) => markRead(n.id));
-    const ids = unreadGeneral.map((n) => n.id).filter((id) => !id.startsWith('local-'));
-    if (ids.length === 0) return;
-    Promise.all(ids.map((id) => markReadMutation({ variables: { id } }))).catch(() => {});
+    markAllReadMutation().catch(() => {});
   };
 
   return (

@@ -312,7 +312,7 @@ export class PosterSchedulerService implements OnModuleInit, OnModuleDestroy {
         brief.posterPlan = plan;
         await this.prisma.order.update({
           where: { id: order.id },
-          data: { projectBrief: brief as any },
+          data: { projectBrief: JSON.stringify(brief) },
         });
       }
     } catch (e) {

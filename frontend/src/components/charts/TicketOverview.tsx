@@ -60,7 +60,7 @@ export default function TicketOverview({ data }: any) {
                                         {item.value}
                                     </div>
 
-                                    <div className="mt-2 h-2 rounded-full bg-slate-800 overflow-hidden">
+                                    <div className="mt-2 h-2 rounded-full bg-border/60 overflow-hidden">
                                         <div
                                             className="h-full rounded-full"
                                             style={{

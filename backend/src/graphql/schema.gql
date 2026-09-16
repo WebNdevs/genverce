@@ -6,6 +6,7 @@ input AIConfigInput {
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
+  chatProvider: String
   imageApiKey: String
   imageApiUrl: String
   imageModel: String
@@ -27,6 +28,7 @@ type AIConfigModel {
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
+  chatProvider: String
   imageApiKey: String
   imageApiUrl: String
   imageModel: String
@@ -58,6 +60,17 @@ input AdminCreateOrderInput {
   price: Float
   projectBrief: ProjectBriefInput!
   status: String
+}
+
+type AdminHireAgentResult {
+  alreadyHired: Boolean
+  influencerId: String!
+  influencerName: String!
+  message: String!
+  orderId: String
+  success: Boolean!
+  userId: String!
+  userName: String
 }
 
 input AdminUpdateOrderInput {
@@ -92,6 +105,17 @@ type ChatModel {
   influencer: InfluencerModel
   influencerId: String!
   messages: [MessageModel!]!
+  notes: [ChatNoteModel!]
+}
+
+type ChatNoteModel {
+  chatId: String!
+  content: String!
+  createdAt: DateTime!
+  id: ID!
+  title: String
+  updatedAt: DateTime!
+  userId: String!
 }
 
 type CheckoutSessionResponse {
@@ -101,15 +125,15 @@ type CheckoutSessionResponse {
 
 input CompleteOnboardingInput {
   brandName: String!
-  contentTypes: [String!]!
-  goal: String!
-  industry: String!
-  platforms: [String!]!
+  contentTypes: [String!]
+  goal: String
+  industry: String
+  platforms: [String!]
   productName: String
   requestedCustomInfluencer: Boolean
-  targetAudience: String!
-  tone: String!
-  website: String!
+  targetAudience: String
+  tone: String
+  website: String
 }
 
 input CreateFaqInput {
@@ -188,6 +212,23 @@ type FilterOptionsResponse {
   languages: [String!]!
 }
 
+input GeneratePostInput {
+  brandName: String
+  callToAction: String
+  generateVisual: Boolean
+  inclusions: [String!]
+  keywords: [String!]
+  platforms: [String!]
+  postType: String
+  productName: String
+  referenceImageUrl: String
+  targetAudience: String
+  tone: String
+  topic: String!
+  visualStyle: String
+  website: String
+}
+
 input GeneratedImageInput {
   createdAt: String!
   delivered: Boolean
@@ -202,6 +243,33 @@ type GeneratedImageModel {
   deliveredAt: DateTime
   messageId: String!
   url: String!
+}
+
+type GeneratedPostModel {
+  callToAction: String
+  caption: String!
+  content: String!
+  createdAt: String!
+  delivered: Boolean
+  hashtags: [String!]!
+  id: String!
+  imagePrompt: String
+  imageUrl: String
+  metadata: JSON
+  platforms: [String!]!
+  title: String!
+  tone: String
+  topic: String!
+}
+
+type HiredAgentInfo {
+  avatar: String
+  createdAt: DateTime!
+  influencerId: String!
+  influencerName: String!
+  orderId: String!
+  serviceType: String
+  status: String!
 }
 
 type InfluencerListResponse {
@@ -264,6 +332,11 @@ enum InfluencerServiceType {
 }
 
 """
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+"""
 The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSONObject
@@ -292,12 +365,14 @@ type Mutation {
   activateInfluencer(id: String!): InfluencerModel!
   activateUser(userId: String!): UserModel!
   adminCreateOrder(input: AdminCreateOrderInput!): OrderModel!
+  adminHireAgentForUser(influencerId: String!, userId: String!): AdminHireAgentResult!
   adminSendMessage(chatId: String!, content: String!): MessageModel!
   adminUpdateOrder(input: AdminUpdateOrderInput!): OrderModel!
   adminUpdateUser(input: AdminUpdateUserInput!, userId: String!): UserModel!
   approveOrder(id: String!): OrderModel!
   changePassword(currentPassword: String!, newPassword: String!): Boolean!
   completeOnboarding(input: CompleteOnboardingInput!): UserModel!
+  createChatNote(chatId: String!, content: String!, title: String): ChatNoteModel!
   createCheckoutSession(orderId: String!): CheckoutSessionResponse!
   createFaqEntry(input: CreateFaqInput!): FaqEntryType!
   createInfluencer(input: CreateInfluencerInput!): InfluencerModel!
@@ -307,8 +382,10 @@ type Mutation {
   createTicket(issue: String!, orderId: String): TicketModel!
   deactivateInfluencer(id: String!): InfluencerModel!
   deactivateUser(userId: String!): UserModel!
+  deleteChatNote(noteId: String!): Boolean!
   deleteFaqEntry(id: ID!): Boolean!
   deleteInfluencerPackage(id: String!): Boolean!
+  generatePost(influencerId: String!, input: GeneratePostInput!): GeneratedPostModel!
   login(input: LoginInput!): AuthResponse!
   logout: Boolean!
   markAllNotificationsRead: Boolean!
@@ -324,6 +401,7 @@ type Mutation {
   softDeleteInfluencer(id: String!): InfluencerModel!
   softDeleteUser(userId: String!): UserModel!
   startChat(influencerId: String!): ChatModel!
+  updateChatNote(content: String!, noteId: String!, title: String): ChatNoteModel!
   updateFaqEntry(id: ID!, input: UpdateFaqInput!): FaqEntryType!
   updateInfluencer(id: String!, input: UpdateInfluencerInput!): InfluencerModel!
   updateInfluencerPackage(id: String!, input: UpdateInfluencerPackageInput!): InfluencerModel!
@@ -351,6 +429,7 @@ type OrderModel {
   deliveredAt: DateTime
   deliveryType: DeliveryType!
   generatedImages: [GeneratedImageModel!]
+  generatedPosts: [GeneratedPostModel!]
   id: ID!
   influencer: InfluencerModel
   influencerId: String!
@@ -430,11 +509,13 @@ input ProjectBriefInput {
 
 type Query {
   adminGetChat(chatId: String!): ChatModel!
+  adminUserHiredAgents(userId: String!): [HiredAgentInfo!]!
   allChats: [ChatModel!]!
-  allOrders(status: OrderStatus): [OrderModel!]!
+  allOrders(influencerId: String, status: String): [OrderModel!]!
   allTickets(status: TicketStatus): [TicketModel!]!
   allUsers: [UserModel!]!
   chat(influencerId: String!): ChatModel!
+  chatNotes(chatId: String!): [ChatNoteModel!]!
   faqEntries: [FaqEntryType!]!
   influencer(id: String!): InfluencerModel!
   influencerChats(influencerId: String!): [ChatModel!]!
@@ -444,6 +525,7 @@ type Query {
   influencers(filter: FilterInfluencerInput): InfluencerListResponse!
   me: UserModel!
   myChats: [ChatModel!]!
+  myHiredAgentsOverview: UserHiredAgentsSummary!
   myNotifications: [NotificationModel!]!
   myOrders: [OrderModel!]!
   myStats: UserStatsModel!
@@ -495,6 +577,7 @@ type SiteSettings {
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
+  chatProvider: String
 }
 
 type TicketModel {
@@ -561,6 +644,7 @@ input UpdateSiteSettingsInput {
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
+  chatProvider: String
 }
 
 input UpsertInfluencerPackageInput {
@@ -572,6 +656,34 @@ input UpsertInfluencerPackageInput {
   sortOrder: Int
   type: PackageType!
   videoCount: Int!
+}
+
+type UserHiredAgentOverview {
+  avatar: String
+  bio: String
+  chatId: String
+  completedOrders: Float!
+  influencerId: String!
+  influencerName: String!
+  latestOrderDate: DateTime
+  orderId: String!
+  pendingOrders: Float!
+  remainingOrders: Float!
+  remainingUnits: Float!
+  serviceType: String
+  status: String!
+  totalDeliveredUnits: Float!
+  totalOrderedUnits: Float!
+  totalOrders: Float!
+}
+
+type UserHiredAgentsSummary {
+  activeAgents: Float!
+  agents: [UserHiredAgentOverview!]!
+  totalAgents: Float!
+  totalCompletedOrders: Float!
+  totalPendingOrders: Float!
+  totalRemainingOrders: Float!
 }
 
 type UserModel {

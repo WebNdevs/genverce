@@ -28,9 +28,43 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var stored = localStorage.getItem('theme');
+                  var theme = stored || 'dark';
+                  var root = document.documentElement;
+                  if (theme === 'light') {
+                    root.classList.add('light');
+                    root.classList.remove('dark');
+                    root.setAttribute('data-theme', 'light');
+                  } else {
+                    root.classList.add('dark');
+                    root.classList.remove('light');
+                    root.setAttribute('data-theme', 'dark');
+                  }
+                } catch (e) {}
+              })();
+              // Auto-reload once if an on-demand chunk times out or fails to load
+              window.addEventListener('error', function(event) {
+                if (event && event.message && /Loading chunk .* failed/i.test(event.message)) {
+                  var key = 'chunk_reload_' + (event.filename || 'app');
+                  if (!sessionStorage.getItem(key)) {
+                    sessionStorage.setItem(key, '1');
+                    window.location.reload();
+                  }
+                }
+              });
+            `,
+          }}
+        />
+      </head>
       <body
-        className={`${plusJakarta.variable} font-sans bg-background text-text-primary min-h-screen antialiased`}
+        className={`${plusJakarta.variable} ${plusJakarta.className} font-sans bg-background text-text-primary min-h-screen antialiased`}
       >
         <Providers>{children}</Providers>
       </body>

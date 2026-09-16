@@ -5,16 +5,35 @@ import { PrismaService } from '../config/prisma.service';
 export class FaqService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeEntry(entry: any) {
+    if (!entry) return entry;
+    let answers: string[] = [];
+    if (Array.isArray(entry.answers)) {
+      answers = entry.answers.map(String);
+    } else if (typeof entry.answers === 'string') {
+      try {
+        const parsed = JSON.parse(entry.answers);
+        answers = Array.isArray(parsed) ? parsed.map(String) : [entry.answers];
+      } catch {
+        answers = [entry.answers];
+      }
+    }
+    return { ...entry, answers };
+  }
+
   async findAll() {
-    return this.prisma.faqEntry.findMany({ orderBy: { createdAt: 'asc' } });
+    const list = await this.prisma.faqEntry.findMany({ orderBy: { createdAt: 'asc' } });
+    return list.map((e) => this.normalizeEntry(e));
   }
 
   async create(data: { question: string; answers: string[]; keywords?: string }) {
-    return this.prisma.faqEntry.create({ data: { ...data, answers: data.answers } });
+    const created = await this.prisma.faqEntry.create({ data: { ...data, answers: data.answers } });
+    return this.normalizeEntry(created);
   }
 
   async update(id: string, data: { question?: string; answers?: string[]; keywords?: string; isActive?: boolean }) {
-    return this.prisma.faqEntry.update({ where: { id }, data });
+    const updated = await this.prisma.faqEntry.update({ where: { id }, data });
+    return this.normalizeEntry(updated);
   }
 
   async delete(id: string) {

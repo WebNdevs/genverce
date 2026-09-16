@@ -1,16 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Search, X, Menu, ChevronUp, ChevronDown,
-  MessageSquare, Wifi, WifiOff, Briefcase, PenSquare, Paperclip
+  MessageSquare, Wifi, WifiOff, Briefcase, PenSquare, Paperclip, FileText, CornerUpLeft,
+  CheckCircle, AlertCircle, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { GET_MY_CHATS } from '@/graphql/queries/chat';
 import { GET_INFLUENCER } from '@/graphql/queries/influencer';
+import { GET_MY_ORDERS } from '@/graphql/queries/order';
 import { START_CHAT } from '@/graphql/mutations/chat';
 import { MARK_NOTIFICATION_READ } from '@/graphql/mutations/notification';
 import { useAuthStore } from '@/lib/auth';
@@ -19,6 +21,10 @@ import { connectSocket } from '@/lib/socket';
 import { toast } from '@/components/ui/toaster';
 import { Message } from '@/types';
 import { ImageBubble } from '@/components/ui/image-bubble';
+import { ChatNotesPanel } from '@/components/chat/chat-notes-panel';
+import { MarkdownContent } from '@/components/chat/markdown-content';
+import { ChatReplyBanner, ChatQuotedPreview } from '@/components/chat/chat-reply-ui';
+import { ReplyTarget, parseReplyMessage, serializeReplyMessage } from '@/lib/chat-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,20 +62,6 @@ function injectSeparators(msgs: Message[]): MsgOrSep[] {
     result.push(m);
   }
   return result;
-}
-
-function highlight(text: string, query: string) {
-  if (!query.trim()) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase()
-          ? <mark key={i} className="bg-brand/30 text-text-primary rounded px-0.5">{part}</mark>
-          : part
-      )}
-    </>
-  );
 }
 
 function parseFileMessage(text: string) {
@@ -137,10 +129,26 @@ function InfluencerAvatar({ name, src, size = 40, online = false }: {
 // ─── Chat panel ───────────────────────────────────────────────────────────────
 
 function ChatPanel({
-  influencerId, user, token, onChatsRefetch,
+  influencerId, user, token, onChatsRefetch, hireAndUsage, onOrdersRefetch,
 }: {
-  influencerId: string; user: any; token: string; onChatsRefetch: () => void;
+  influencerId: string;
+  user: any;
+  token: string;
+  onChatsRefetch: () => void;
+  hireAndUsage?: {
+    isHired: boolean;
+    hasRemainingUsage: boolean;
+    remainingUnits: number;
+    totalOrdered: number;
+    totalDelivered: number;
+  };
+  onOrdersRefetch?: () => void;
 }) {
+  const isHired = hireAndUsage?.isHired ?? false;
+  const hasRemainingUsage = hireAndUsage?.hasRemainingUsage ?? false;
+  const remainingUnits = hireAndUsage?.remainingUnits ?? 0;
+  const totalOrdered = hireAndUsage?.totalOrdered ?? 0;
+  const totalDelivered = hireAndUsage?.totalDelivered ?? 0;
   const { notifications, markRead } = useNotificationStore();
   const [markNotificationRead] = useMutation(MARK_NOTIFICATION_READ);
 
@@ -161,10 +169,13 @@ function ChatPanel({
   const [chatId, setChatId]       = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [searchOpen, setSearchOpen]   = useState(false);
+  const [notesOpen, setNotesOpen]     = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<null | { url: string; name: string; mimeType: string; isImage: boolean }>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyTarget | null>(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
 
   const messagesEndRef  = useRef<HTMLDivElement>(null);
   const inputRef        = useRef<HTMLTextAreaElement>(null);
@@ -172,7 +183,7 @@ function ChatPanel({
   const searchInputRef  = useRef<HTMLInputElement>(null);
   const msgRefs         = useRef<Record<string, HTMLDivElement | null>>({});
   const chatIdRef       = useRef<string | null>(null);
-  const initialized     = useRef(false);
+  const initializedFor  = useRef<string | null>(null);
 
   const { data: infData } = useQuery(GET_INFLUENCER, { variables: { id: influencerId } });
   const influencer        = infData?.influencer as any;
@@ -194,14 +205,21 @@ function ChatPanel({
       } catch {}
       onChatsRefetch();
     },
+    onError: (err) => {
+      console.error('[MessagesPage] startChat error:', err);
+      toast({ title: 'Chat initialization error', description: err.message, variant: 'error' });
+    },
   });
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
+    if (!token || !influencerId) return;
+    if (initializedFor.current === influencerId) return;
+    initializedFor.current = influencerId;
+
     const socket = connectSocket(token);
     setConnected(socket.connected);
-    socket.on('connect', () => {
+
+    const onConnect = () => {
       setConnected(true);
       if (chatIdRef.current) {
         socket.emit('joinChat', { chatId: chatIdRef.current, active: true });
@@ -212,19 +230,28 @@ function ChatPanel({
           if (user?.id) socket.emit('setActiveChat', { chatId: chatIdRef.current, userId: user.id });
         } catch {}
       }
-    });
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('newMessage', (msg: Message) => {
+    };
+    const onDisconnect = () => setConnected(false);
+    const onNewMessage = (msg: Message) => {
       if (msg.chatId !== chatIdRef.current) return;
       setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
       onChatsRefetch();
-    });
-    socket.on('typing', ({ isTyping: t }: { isTyping: boolean }) => setIsTyping(t));
-    socket.on('chatError', ({ message }: { message: string }) => {
+      onOrdersRefetch?.();
+    };
+    const onTyping = ({ isTyping: t }: { isTyping: boolean }) => setIsTyping(t);
+    const onChatError = ({ message }: { message: string }) => {
       setIsTyping(false);
       toast({ title: 'Chat error', description: message, variant: 'error' });
-    });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('newMessage', onNewMessage);
+    socket.on('typing', onTyping);
+    socket.on('chatError', onChatError);
+
     startChat({ variables: { influencerId } });
+
     return () => {
       if (chatIdRef.current) socket.emit('leaveChat', { chatId: chatIdRef.current });
       try {
@@ -234,10 +261,14 @@ function ChatPanel({
       try {
         socket.emit('clearActiveChat', {});
       } catch {}
-      ['connect', 'disconnect', 'newMessage', 'typing', 'chatError'].forEach((e) => socket.off(e));
-      initialized.current = false;
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('newMessage', onNewMessage);
+      socket.off('typing', onTyping);
+      socket.off('chatError', onChatError);
+      initializedFor.current = null;
     };
-  }, []);
+  }, [influencerId, token, user?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -261,14 +292,39 @@ function ChatPanel({
     msgRefs.current[matchedIds[next]]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  const handleReply = (msg: Message) => {
+    const isUser = msg.role === 'USER';
+    const senderName = isUser ? 'You' : influencerName;
+    const { body } = parseReplyMessage(msg.content);
+    setReplyingTo({
+      id: msg.id,
+      role: msg.role,
+      senderName,
+      content: body,
+      imageUrl: msg.imageUrl,
+    });
+    inputRef.current?.focus();
+  };
+
+  const scrollToMessage = (msgId?: string) => {
+    if (!msgId) return;
+    const el = msgRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(msgId);
+      setTimeout(() => setHighlightedMsgId(null), 2500);
+    }
+  };
+
   const sendMessage = () => {
     if ((!input.trim() && !pendingUpload) || !chatId || !connected || uploading) return;
     const base = input.trim();
+    const withReply = serializeReplyMessage(base, replyingTo);
     const content = pendingUpload
       ? pendingUpload.isImage
-        ? (base || `Image: ${pendingUpload.name}`)
-        : `${base ? `${base}\n\n` : ''}File: ${pendingUpload.name}\n${pendingUpload.url}`
-      : base;
+        ? (withReply || `Image: ${pendingUpload.name}`)
+        : `${withReply ? `${withReply}\n\n` : ''}File: ${pendingUpload.name}\n${pendingUpload.url}`
+      : withReply;
     connectSocket(token).emit('sendMessage', {
       chatId, influencerId, content,
       ...(pendingUpload?.isImage ? { imageUrl: pendingUpload.url } : {}),
@@ -276,6 +332,10 @@ function ChatPanel({
     });
     setInput('');
     setPendingUpload(null);
+    setReplyingTo(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     inputRef.current?.focus();
   };
 
@@ -325,8 +385,11 @@ function ChatPanel({
     await uploadFile(file);
   };
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   const openSearch = () => {
@@ -344,15 +407,59 @@ function ChatPanel({
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border bg-surface/80 backdrop-blur-sm flex-shrink-0">
         <InfluencerAvatar name={influencerName} src={influencer?.avatar} size={40} online={!inactive} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{influencerName}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {connected
-              ? <><Wifi size={11} className="text-success" /><span className="text-[11px] text-success">Online</span></>
-              : <><WifiOff size={11} className="text-text-secondary" /><span className="text-[11px] text-text-secondary">Connecting…</span></>}
-            {inactive && <span className="text-[11px] text-error ml-1">· Unavailable</span>}
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-sm truncate">{influencerName}</p>
+            <div className="flex items-center gap-1.5">
+              {connected
+                ? <><Wifi size={11} className="text-success" /><span className="text-[11px] text-success">Online</span></>
+                : <><WifiOff size={11} className="text-text-secondary" /><span className="text-[11px] text-text-secondary">Connecting…</span></>}
+              {inactive && <span className="text-[11px] text-error ml-1">· Unavailable</span>}
+            </div>
+            {/* Header Status Badge */}
+            {isHired ? (
+              hasRemainingUsage ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                  <CheckCircle size={11} className="text-emerald-400 flex-shrink-0" />
+                  <span>Hired · {remainingUnits} of {totalOrdered} uses remaining</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                  <AlertCircle size={11} className="text-amber-400 flex-shrink-0" />
+                  <span>Hired · 0 uses remaining</span>
+                </span>
+              )
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface border border-border text-text-secondary">
+                <span className="w-1.5 h-1.5 rounded-full bg-text-secondary/50 flex-shrink-0" />
+                <span>Not Hired · 0 uses remaining</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-text-secondary mt-0.5">
+            <span>{influencer?.contentStyle || 'AI Influencer'}</span>
+            {isHired && (
+              <>
+                <span className="text-border">·</span>
+                <span className="text-[11px] text-text-secondary">
+                  {totalDelivered} of {totalOrdered} deliverables completed
+                </span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          <button
+            onClick={() => setNotesOpen(!notesOpen)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              notesOpen
+                ? 'bg-brand/10 text-brand-light border border-brand/30'
+                : 'text-text-secondary hover:text-text-primary hover:bg-surface border border-transparent'
+            }`}
+            title="Private Notes"
+          >
+            <FileText size={15} />
+            <span className="hidden sm:inline">Notes</span>
+          </button>
           <button
             onClick={searchOpen ? closeSearch : openSearch}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-brand/10 text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-surface'}`}
@@ -366,13 +473,63 @@ function ChatPanel({
           >
             View Profile
           </Link>
-          <Link
-            href={inactive ? '#' : `/order/${influencerId}`}
-            aria-disabled={inactive}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-hover transition-colors ${inactive ? 'pointer-events-none opacity-50' : ''}`}
-          >
-            <Briefcase size={12} /> Hire
-          </Link>
+          {isHired ? (
+            hasRemainingUsage ? (
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/dashboard/orders/influencer/${influencerId}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                  title={`You have ${remainingUnits} remaining deliverable(s). Click to view deliverables and orders.`}
+                >
+                  <CheckCircle size={13} className="text-emerald-400" />
+                  <span>Hired · {remainingUnits} left</span>
+                </Link>
+                <Link
+                  href={inactive ? '#' : `/order/${influencerId}?mode=add-usage`}
+                  aria-disabled={inactive}
+                  className={`hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-surface border border-border text-text-secondary hover:text-text-primary hover:border-brand/40 transition-colors ${inactive ? 'pointer-events-none opacity-50' : ''}`}
+                  title="Add more usage to your project"
+                >
+                  <Plus size={13} />
+                  <span>Add Usage</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/dashboard/orders/influencer/${influencerId}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-colors"
+                  title="All deliverables used in current plan. Click to view orders."
+                >
+                  <AlertCircle size={13} className="text-amber-400" />
+                  <span>Hired · 0 Left</span>
+                </Link>
+                <Link
+                  href={inactive ? '#' : `/order/${influencerId}?mode=add-usage`}
+                  aria-disabled={inactive}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-hover transition-colors shadow-sm ${inactive ? 'pointer-events-none opacity-50' : ''}`}
+                  title="Purchase additional usage or hire a new package"
+                >
+                  <Plus size={13} />
+                  <span>Add Usage</span>
+                </Link>
+              </div>
+            )
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-secondary">
+                Not Hired
+              </span>
+              <Link
+                href={inactive ? '#' : `/order/${influencerId}`}
+                aria-disabled={inactive}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-hover transition-colors ${inactive ? 'pointer-events-none opacity-50' : ''}`}
+              >
+                <Briefcase size={12} />
+                Hire
+              </Link>
+            </div>
+          )}
         </div>
       </div>
 
@@ -457,6 +614,8 @@ function ChatPanel({
               const isUser        = msg.role === 'USER';
               const isMatch       = !!q && msg.content.toLowerCase().includes(q);
               const isActiveMatch = isMatch && matchedIds[clamped] === msg.id;
+              const isHighlighted = highlightedMsgId === msg.id;
+              const { reply, body } = parseReplyMessage(msg.content);
 
               return (
                 <motion.div
@@ -473,29 +632,57 @@ function ChatPanel({
                     {!isUser && (
                       <span className="text-[11px] text-text-secondary/70 mb-1 ml-1 font-medium">{influencerName}</span>
                     )}
-                    <div className={`${msg.imageUrl ? 'p-1.5' : 'px-4 py-2.5'} text-sm leading-relaxed break-words ${
+                    <div className={`${msg.imageUrl ? 'p-1.5' : 'px-4 py-2.5'} text-sm leading-relaxed break-words transition-all duration-300 ${
                       isUser
                         ? 'bg-brand text-white rounded-2xl rounded-br-none shadow-sm'
                         : 'bg-surface border border-border text-text-primary rounded-2xl rounded-bl-none'
-                    } ${isActiveMatch ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-background' : ''}`}>
+                    } ${isActiveMatch ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-background' : ''} ${
+                      isHighlighted ? 'ring-2 ring-brand-light ring-offset-2 ring-offset-background shadow-lg shadow-brand/20 scale-[1.01]' : ''
+                    }`}>
+                      {reply && (
+                        <ChatQuotedPreview
+                          reply={reply}
+                          isUser={isUser}
+                          onScrollToMessage={scrollToMessage}
+                        />
+                      )}
                       {msg.imageUrl ? (
                         <div className="flex flex-col gap-2">
-                          {shouldShowImageText(msg.content) ? (
-                            <div className="px-2 pt-1 whitespace-pre-wrap">
-                              {highlight(msg.content, searchQuery.trim())}
+                          {shouldShowImageText(body) ? (
+                            <div className="px-2 pt-1">
+                              <MarkdownContent
+                                content={body}
+                                isUser={isUser}
+                                searchQuery={searchQuery.trim()}
+                              />
                             </div>
                           ) : null}
-                          <ImageBubble src={msg.imageUrl} alt={msg.content || 'Image'} msgId={msg.id} />
+                          <ImageBubble src={msg.imageUrl} alt={body || 'Image'} msgId={msg.id} />
                         </div>
-                      ) : isFileMessage(msg.content) ? (
-                        renderFileMessage(msg.content)
+                      ) : isFileMessage(body) ? (
+                        renderFileMessage(body)
                       ) : (
-                        highlight(msg.content, searchQuery.trim())
+                        <MarkdownContent
+                          content={body}
+                          isUser={isUser}
+                          searchQuery={searchQuery.trim()}
+                        />
                       )}
                     </div>
-                    <span className="text-[10px] text-text-secondary/40 mt-1 mx-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {fmtTime(msg.createdAt)}
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-1 mx-1">
+                      <button
+                        type="button"
+                        onClick={() => handleReply(msg)}
+                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all px-1.5 py-0.5 rounded hover:bg-surface border border-transparent hover:border-border text-text-secondary/70 hover:text-text-primary flex items-center gap-1 text-[11px]"
+                        title="Reply to this message"
+                      >
+                        <CornerUpLeft size={12} />
+                        <span className="text-[10px]">Reply</span>
+                      </button>
+                      <span className="text-[10px] text-text-secondary/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {fmtTime(msg.createdAt)}
+                      </span>
+                    </div>
                   </div>
                   {isUser && (
                     <div className="w-[30px] h-[30px] rounded-full bg-brand/15 border border-brand/30 flex items-center justify-center text-xs font-bold gradient-text flex-shrink-0">
@@ -529,6 +716,14 @@ function ChatPanel({
       {/* ── Input area ── */}
       <div className="flex-shrink-0 border-t border-border bg-surface/80 backdrop-blur-sm px-5 py-4">
         <div className="max-w-4xl mx-auto">
+          <AnimatePresence>
+            {replyingTo && (
+              <ChatReplyBanner
+                replyingTo={replyingTo}
+                onCancel={() => setReplyingTo(null)}
+              />
+            )}
+          </AnimatePresence>
           {pendingUpload ? (
             <div className="flex items-center justify-between gap-3 mb-2 px-3 py-2 rounded-xl border border-border bg-background">
               <div className="min-w-0">
@@ -593,6 +788,14 @@ function ChatPanel({
           Enter to send · Shift+Enter for new line
         </p>
       </div>
+
+      {/* Upwork-style Private Notes Drawer Panel */}
+      <ChatNotesPanel
+        chatId={chatId}
+        isOpen={notesOpen}
+        onClose={() => setNotesOpen(false)}
+        influencerName={influencerName}
+      />
     </div>
   );
 }
@@ -660,6 +863,49 @@ export default function MessagesPage() {
     skip: !isAuthenticated,
   });
   const allChats: any[] = chatsData?.myChats ?? [];
+
+  const { data: myOrdersData, refetch: refetchOrders } = useQuery(GET_MY_ORDERS, {
+    fetchPolicy: 'cache-and-network',
+    skip: !isAuthenticated,
+  });
+
+  const usageByInfluencer = useMemo(() => {
+    const orders = myOrdersData?.myOrders || [];
+    const validOrders = orders.filter(
+      (o: any) =>
+        ['PAID', 'GENERATING', 'PENDING_REVIEW', 'APPROVED', 'DELIVERED'].includes(o.status),
+    );
+    const map = new Map<string, { isHired: boolean; hasRemainingUsage: boolean; remainingUnits: number; totalOrdered: number; totalDelivered: number }>();
+    for (const o of validOrders) {
+      if (!o.influencerId) continue;
+      let cur = map.get(o.influencerId);
+      if (!cur) {
+        cur = { isHired: true, hasRemainingUsage: false, remainingUnits: 0, totalOrdered: 0, totalDelivered: 0 };
+        map.set(o.influencerId, cur);
+      }
+      let postsDelivered = 0;
+      let imagesDelivered = 0;
+      if (o.projectBrief) {
+        try {
+          const brief = typeof o.projectBrief === 'string' ? JSON.parse(o.projectBrief) : o.projectBrief;
+          if (Array.isArray(brief?.generatedPosts)) postsDelivered = brief.generatedPosts.length;
+          if (Array.isArray(brief?.generatedImages)) imagesDelivered = brief.generatedImages.length;
+        } catch {}
+      }
+      const effective = Math.max(o.videosDelivered || 0, postsDelivered, imagesDelivered);
+      const ordered = o.videosOrdered > 0 ? o.videosOrdered : 1;
+      const deliveredForOrder = Math.min(ordered, effective);
+      cur.totalOrdered += ordered;
+      cur.totalDelivered += deliveredForOrder;
+    }
+
+    map.forEach((cur) => {
+      cur.remainingUnits = Math.max(0, cur.totalOrdered - cur.totalDelivered);
+      cur.hasRemainingUsage = cur.remainingUnits > 0;
+    });
+    return map;
+  }, [myOrdersData]);
+
   const lastActivatedChatId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -794,6 +1040,38 @@ export default function MessagesPage() {
                       </span>
                     )}
                   </div>
+                  {/* Hired & Remaining Usage Status Badge */}
+                  {(() => {
+                    const u = usageByInfluencer.get(c.influencerId);
+                    if (u?.isHired) {
+                      if (u.remainingUnits > 0) {
+                        return (
+                          <div className="mb-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              Hired · {u.remainingUnits} left
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="mb-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            Hired · 0 left
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="mb-1">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface border border-border text-text-secondary">
+                          <span className="w-1.5 h-1.5 rounded-full bg-text-secondary/50" />
+                          Not Hired
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <p className="text-xs text-text-secondary/60 truncate mb-1">
                     {c.influencer?.contentStyle ?? 'AI Influencer'}
                   </p>
@@ -833,8 +1111,6 @@ export default function MessagesPage() {
     </div>
   );
 
-  if (!mounted) return null;
-
   return (
     <div className="flex bg-background overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
 
@@ -864,6 +1140,8 @@ export default function MessagesPage() {
             user={user}
             token={token}
             onChatsRefetch={refetchChats}
+            hireAndUsage={usageByInfluencer.get(selectedId) || { isHired: false, hasRemainingUsage: false, remainingUnits: 0, totalOrdered: 0, totalDelivered: 0 }}
+            onOrdersRefetch={refetchOrders}
           />
         ) : (
           EmptyState
@@ -897,6 +1175,8 @@ export default function MessagesPage() {
                 user={user}
                 token={token}
                 onChatsRefetch={refetchChats}
+                hireAndUsage={usageByInfluencer.get(selectedId) || { isHired: false, hasRemainingUsage: false, remainingUnits: 0, totalOrdered: 0, totalDelivered: 0 }}
+                onOrdersRefetch={refetchOrders}
               />
             </div>
           </motion.div>

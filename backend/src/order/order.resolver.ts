@@ -1,7 +1,8 @@
 import { Resolver, Query, Mutation, Args, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { GraphQLJSONObject } from 'graphql-type-json';
 import { OrderService } from './order.service';
-import { OrderModel, GeneratedImageModel } from './order.model';
+import { OrderModel, GeneratedImageModel, GeneratedPostModel } from './order.model';
 import { CreateOrderInput } from './dto/create-order.dto';
 import { AdminCreateOrderInput } from './dto/admin-create-order.dto';
 import { AdminUpdateOrderInput } from './dto/admin-update-order.dto';
@@ -14,6 +15,25 @@ import { Role, OrderStatus } from '@prisma/client';
 @Resolver(() => OrderModel)
 export class OrderResolver {
   constructor(private orderService: OrderService) {}
+
+  @ResolveField(() => GraphQLJSONObject, { nullable: true })
+  projectBrief(@Parent() order: any) {
+    if (!order.projectBrief) return null;
+    if (typeof order.projectBrief === 'object') return order.projectBrief;
+    if (typeof order.projectBrief === 'string') {
+      try {
+        return JSON.parse(order.projectBrief);
+      } catch {
+        return { raw: order.projectBrief };
+      }
+    }
+    return null;
+  }
+
+  @ResolveField(() => [GeneratedPostModel])
+  async generatedPosts(@Parent() order: any) {
+    return this.orderService.findGeneratedPosts(order.id);
+  }
 
   @Mutation(() => OrderModel)
   @UseGuards(JwtAuthGuard)
@@ -45,9 +65,10 @@ export class OrderResolver {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   async allOrders(
-    @Args('status', { type: () => OrderStatus, nullable: true }) status?: OrderStatus,
+    @Args('status', { nullable: true }) status?: OrderStatus,
+    @Args('influencerId', { nullable: true }) influencerId?: string,
   ) {
-    return this.orderService.findAll(status);
+    return this.orderService.findAll(status, influencerId);
   }
 
   @Query(() => [OrderModel])

@@ -36,7 +36,7 @@ const TONES = [
 export default function OnboardingPage() {
   const router = useRouter();
 
-  const { user, updateUser, isAuthenticated } =
+  const { user, updateUser, isAuthenticated, hydrated } =
     useAuthStore();
 
   const [step, setStep] = useState(1);
@@ -91,16 +91,18 @@ export default function OnboardingPage() {
 
   /* PROTECT ROUTE */
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-    } else if (user?.isOnboarded) {
-      router.push(
-        user.role === 'ADMIN'
-          ? '/admin'
-          : '/dashboard'
-      );
+    if (hydrated) {
+      if (!isAuthenticated) {
+        router.push('/login');
+      } else if (user?.isOnboarded) {
+        router.push(
+          user.role === 'ADMIN'
+            ? '/admin'
+            : '/dashboard'
+        );
+      }
     }
-  }, [user, isAuthenticated, router]);
+  }, [user, isAuthenticated, hydrated, router]);
 
   /* QUERIES */
   const {

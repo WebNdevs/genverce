@@ -7,6 +7,10 @@ import { Toaster } from '@/components/ui/toaster';
 import { useAuthStore } from '@/lib/auth';
 import { ChatNotifier } from '@/components/chat-notifier';
 
+
+import { ThemeProvider } from '@/providers/theme-provider';
+import { TabNavigationProvider } from '@/providers/tab-navigation-provider';
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((s) => s.hydrate);
 
@@ -16,9 +20,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ApolloProvider client={apolloClient}>
-      <ChatNotifier />
-      {children}
-      <Toaster />
+      <ThemeProvider>
+        <TabNavigationProvider>
+          <ChatNotifier />
+          {children}
+          <Toaster />
+        </TabNavigationProvider>
+      </ThemeProvider>
     </ApolloProvider>
   );
 }

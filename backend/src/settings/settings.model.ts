@@ -3,6 +3,9 @@ import { ObjectType, Field } from '@nestjs/graphql';
 @ObjectType()
 export class SiteSettings {
   @Field({ nullable: true })
+  chatProvider?: string;
+
+  @Field({ nullable: true })
   chatApiUrl?: string;
 
   @Field({ nullable: true })

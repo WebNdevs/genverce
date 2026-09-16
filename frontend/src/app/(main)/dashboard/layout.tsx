@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ReactNode, useState, useLayoutEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ReactNode, useState, useLayoutEffect, useEffect } from 'react';
 import {
   Video, Ticket, LayoutDashboard, Search, UserPlus,
-  Settings, ChevronDown, User, MessageSquare, Menu, X,
+  Settings, ChevronDown, User, MessageSquare, Menu, X, Bot,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/layout/navbar';
@@ -15,6 +15,7 @@ import AdminLayout from '@/app/(admin)/admin/layout';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/dashboard/ai-agents', label: 'My AI Agents', icon: Bot },
   { href: '/dashboard/orders', label: 'My Orders', icon: Video },
   { href: '/dashboard/chats', label: 'My Chats', icon: MessageSquare },
   { href: '/dashboard/tickets', label: 'Support', icon: Ticket },
@@ -25,12 +26,19 @@ const navItems = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const router = useRouter();
+  const { user, isAuthenticated, hydrated } = useAuthStore();
   const [openSettings, setOpenSettings] = useState(pathname.startsWith('/profile'));
   const [mounted, setMounted] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useLayoutEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated && user?.role === 'CUSTOMER' && !user?.isOnboarded) {
+      router.replace('/onboarding');
+    }
+  }, [hydrated, isAuthenticated, user, router]);
 
   if (!mounted) {
     return (
@@ -41,7 +49,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="flex gap-6">
               <aside className="hidden lg:block w-64 flex-shrink-0">
                 <div className="rounded-lg border border-border bg-surface p-2 space-y-1">
-                  {[1,2,3,4,5,6,7].map((i) => (
+                  {[1,2,3,4,5,6,7,8].map((i) => (
                     <div key={i} className="h-9 rounded-md bg-background animate-pulse" />
                   ))}
                 </div>
@@ -126,14 +134,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
           {/* Mobile sidebar toggle */}
-          <div className="lg:hidden mb-4">
-            <button
-              onClick={() => setMobileSidebarOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Menu size={16} /> Menu
-            </button>
-          </div>
+          {(pathname.startsWith('/dashboard') || pathname.startsWith('/admin') || pathname.startsWith('/profile')) && (
+            <div className="lg:hidden mb-4">
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <Menu size={16} /> Menu
+              </button>
+            </div>
+          )}
 
           <div className="flex gap-6">
             {/* Desktop sidebar */}

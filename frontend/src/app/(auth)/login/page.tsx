@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@apollo/client';
@@ -12,7 +12,20 @@ import { toast } from '@/components/ui/toaster';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { user, isAuthenticated, hydrated, setAuth } = useAuthStore();
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated) {
+      if (user?.role === 'ADMIN') {
+        router.replace('/admin');
+      } else if (!user?.isOnboarded && user?.role === 'CUSTOMER') {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/dashboard');
+      }
+    }
+  }, [hydrated, isAuthenticated, user, router]);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,7 +67,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >

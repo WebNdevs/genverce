@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface Toast {
   id: string;
   title: string;
   description?: string;
-  variant?: 'default' | 'success' | 'error';
+  variant?: 'default' | 'success' | 'error' | 'destructive' | 'warning';
 }
 
 let toastListeners: ((toast: Toast) => void)[] = [];
@@ -23,24 +23,38 @@ export function toast(props: Omit<Toast, 'id'>) {
 const VARIANTS = {
   success: {
     icon: CheckCircle2,
-    bar: 'bg-success',
-    iconCls: 'text-success',
-    border: 'border-success/30',
-    bg: 'bg-success/5',
+    bar: 'bg-emerald-500',
+    iconCls: 'text-emerald-600 dark:text-emerald-400',
+    border: 'border-emerald-500/30 dark:border-emerald-500/40',
+    bg: 'bg-emerald-500/10',
   },
   error: {
     icon: AlertCircle,
-    bar: 'bg-error',
-    iconCls: 'text-error',
-    border: 'border-error/30',
-    bg: 'bg-error/5',
+    bar: 'bg-red-500',
+    iconCls: 'text-red-600 dark:text-red-400',
+    border: 'border-red-500/30 dark:border-red-500/40',
+    bg: 'bg-red-500/10',
+  },
+  destructive: {
+    icon: AlertCircle,
+    bar: 'bg-red-500',
+    iconCls: 'text-red-600 dark:text-red-400',
+    border: 'border-red-500/30 dark:border-red-500/40',
+    bg: 'bg-red-500/10',
+  },
+  warning: {
+    icon: AlertTriangle,
+    bar: 'bg-amber-500',
+    iconCls: 'text-amber-600 dark:text-amber-400',
+    border: 'border-amber-500/30 dark:border-amber-500/40',
+    bg: 'bg-amber-500/10',
   },
   default: {
     icon: Info,
-    bar: 'bg-brand',
-    iconCls: 'text-brand-light',
-    border: 'border-brand/20',
-    bg: 'bg-brand/5',
+    bar: 'bg-indigo-600 dark:bg-indigo-500',
+    iconCls: 'text-indigo-600 dark:text-indigo-400',
+    border: 'border-indigo-500/30 dark:border-indigo-500/40',
+    bg: 'bg-indigo-500/10',
   },
 };
 
@@ -66,7 +80,7 @@ export function Toaster() {
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((t) => {
-          const v = VARIANTS[t.variant ?? 'default'];
+          const v = VARIANTS[t.variant ?? 'default'] || VARIANTS.default;
           const Icon = v.icon;
           return (
             <motion.div
@@ -77,8 +91,9 @@ export function Toaster() {
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               className={cn(
                 'pointer-events-auto relative flex items-start gap-3 w-[calc(100vw-2rem)] max-w-sm',
-                'rounded-xl border shadow-xl shadow-black/60 overflow-hidden',
-                'bg-[#16162a]',
+                'rounded-xl border overflow-hidden transition-colors duration-200',
+                'bg-surface border-border text-text-primary',
+                'shadow-lg shadow-black/10 dark:shadow-xl dark:shadow-black/60',
                 v.border,
               )}
             >
@@ -99,7 +114,7 @@ export function Toaster() {
               {/* Dismiss */}
               <button
                 onClick={() => dismiss(t.id)}
-                className="absolute top-2.5 right-2.5 p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-white/10 transition-colors"
+                className="absolute top-2.5 right-2.5 p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
               >
                 <X size={14} />
               </button>

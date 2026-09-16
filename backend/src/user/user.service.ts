@@ -1,12 +1,20 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../config/prisma.service';
-import { Role } from '@prisma/client';
+import { OrderStatus, Role } from '@prisma/client';
+import { ChatService } from '../chat/chat.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService, private config: ConfigService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+    @Inject(forwardRef(() => ChatService))
+    private chatService: ChatService,
+    private notificationService: NotificationService,
+  ) {}
 
   private mockOverrides: Record<string, Partial<any>> = {};
 
@@ -80,9 +88,13 @@ export class UserService {
     data: {
       brandName: string;
       productName?: string;
-      website: string;
-      targetAudience: string;
-      tone: string;
+      website?: string;
+      targetAudience?: string;
+      tone?: string;
+      industry?: string;
+      goal?: string;
+      platforms?: string[];
+      contentTypes?: string[];
       requestedCustomInfluencer?: boolean;
     },
   ) {
@@ -204,5 +216,372 @@ export class UserService {
     const totalInfluencersHired = new Set(orders.map((o) => o.influencerId)).size;
 
     return { totalOrders, totalVideosGenerated, totalInfluencersHired };
+  }
+
+  async adminHireAgentForUser(userId: string, influencerId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const influencer = await this.prisma.influencer.findUnique({
+      where: { id: influencerId },
+      select: { id: true, name: true, avatar: true, serviceType: true, isActive: true },
+    });
+    if (!influencer) throw new NotFoundException('Influencer not found');
+
+    const emailPrefix = user.email.split('@')[0].toLowerCase();
+    const relatedUsers = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { id: userId },
+          { email: user.email },
+          { email: { startsWith: `${emailPrefix}@genver` } },
+        ],
+      },
+      select: { id: true, name: true, email: true },
+    });
+
+    let primaryOrderId: string | undefined;
+    let wasAlreadyHired = false;
+
+    for (const targetUser of relatedUsers) {
+      const activeOrder = await this.prisma.order.findFirst({
+        where: {
+          customerId: targetUser.id,
+          influencerId,
+          status: {
+            in: [
+              OrderStatus.PAID,
+              OrderStatus.GENERATING,
+              OrderStatus.PENDING_REVIEW,
+              OrderStatus.APPROVED,
+              OrderStatus.DELIVERED,
+            ],
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (activeOrder) {
+        if (targetUser.id === userId) {
+          primaryOrderId = activeOrder.id;
+          wasAlreadyHired = true;
+        }
+        try {
+          await this.chatService.findOrCreateChat(targetUser.id, influencerId);
+        } catch {}
+        continue;
+      }
+
+      const pendingOrder = await this.prisma.order.findFirst({
+        where: {
+          customerId: targetUser.id,
+          influencerId,
+          status: OrderStatus.PENDING_PAYMENT,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let currentOrderId: string;
+      if (pendingOrder) {
+        const updated = await this.prisma.order.update({
+          where: { id: pendingOrder.id },
+          data: {
+            status: OrderStatus.PAID,
+            price: 0,
+            aiDisclosure: true,
+            projectBrief:
+              typeof pendingOrder.projectBrief === 'string' && pendingOrder.projectBrief.length > 5
+                ? pendingOrder.projectBrief
+                : JSON.stringify({
+                    productName: `${influencer.name} Collaboration`,
+                    notes: 'Assigned directly by Super Admin. Full hiring access granted without payment.',
+                  }),
+          },
+        });
+        currentOrderId = updated.id;
+      } else {
+        const created = await this.prisma.order.create({
+          data: {
+            customerId: targetUser.id,
+            influencerId,
+            package: 'SINGLE' as any,
+            deliveryType: 'INSTANT' as any,
+            status: OrderStatus.PAID,
+            price: 0,
+            videosOrdered: 10,
+            videosDelivered: 0,
+            aiDisclosure: true,
+            projectBrief: JSON.stringify({
+              productName: `${influencer.name} Collaboration`,
+              notes: 'Assigned directly by Super Admin. Full hiring access granted without payment.',
+            }),
+          },
+        });
+        currentOrderId = created.id;
+      }
+
+      if (targetUser.id === userId || !primaryOrderId) {
+        primaryOrderId = currentOrderId;
+      }
+
+      // Initialize Chat and add welcome message
+      try {
+        const chat = await this.chatService.findOrCreateChat(targetUser.id, influencerId);
+        await this.chatService.addMessage(
+          chat.id,
+          'ASSISTANT',
+          `Hi ${targetUser.name || 'there'}! I’m ${influencer.name}. Your account has been granted direct collaboration access by the Super Admin. What would you like to create together?`,
+        );
+      } catch (chatErr) {
+        console.error('[UserService] Could not initialize chat for hired influencer:', chatErr);
+      }
+
+      // Dispatch real-time notification
+      try {
+        await this.notificationService.create(targetUser.id, {
+          title: `${influencer.name} is now hired & active!`,
+          description: `Super Admin has assigned ${influencer.name} to your account. You can start collaborating immediately.`,
+          href: `/chat/${influencer.id}`,
+        });
+      } catch (notifErr) {
+        console.error('[UserService] Could not send hire notification:', notifErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: wasAlreadyHired
+        ? `${influencer.name} is already hired and active for ${user.name || user.email}.`
+        : `${influencer.name} was successfully hired and activated for ${user.name || user.email}!`,
+      orderId: primaryOrderId,
+      userId: user.id,
+      influencerId: influencer.id,
+      influencerName: influencer.name,
+      userName: user.name || user.email,
+      alreadyHired: wasAlreadyHired,
+    };
+  }
+
+  async getUserHiredAgents(userId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        customerId: userId,
+        status: {
+          in: [
+            OrderStatus.PAID,
+            OrderStatus.GENERATING,
+            OrderStatus.PENDING_REVIEW,
+            OrderStatus.APPROVED,
+            OrderStatus.DELIVERED,
+          ],
+        },
+      },
+      include: {
+        influencer: {
+          select: { id: true, name: true, avatar: true, serviceType: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const seen = new Set<string>();
+    const results: Array<{
+      influencerId: string;
+      influencerName: string;
+      avatar?: string;
+      serviceType?: string;
+      orderId: string;
+      status: string;
+      createdAt: Date;
+    }> = [];
+
+    for (const o of orders) {
+      if (!o.influencer || seen.has(o.influencerId)) continue;
+      seen.add(o.influencerId);
+      results.push({
+        influencerId: o.influencer.id,
+        influencerName: o.influencer.name,
+        avatar: o.influencer.avatar || undefined,
+        serviceType: o.influencer.serviceType,
+        orderId: o.id,
+        status: o.status,
+        createdAt: o.createdAt,
+      });
+    }
+
+    return results;
+  }
+
+  async getMyHiredAgentsOverview(userId: string) {
+    // 1. Resolve user and any alias accounts
+    let customerIds = [userId];
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true },
+      });
+      if (user?.email) {
+        const prefix = user.email.split('@')[0].toLowerCase();
+        const related = await this.prisma.user.findMany({
+          where: {
+            OR: [
+              { id: userId },
+              { email: user.email },
+              { email: { startsWith: `${prefix}@genver` } },
+            ],
+          },
+          select: { id: true },
+        });
+        customerIds = related.map((r) => r.id);
+      }
+    } catch {}
+
+    // 2. Fetch all valid orders for this user
+    const orders = await this.prisma.order.findMany({
+      where: {
+        customerId: { in: customerIds },
+        status: {
+          notIn: [OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.REJECTED],
+        },
+      },
+      include: {
+        influencer: {
+          select: { id: true, name: true, avatar: true, serviceType: true, bio: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // 3. Group by influencerId
+    const agentMap = new Map<string, typeof orders>();
+    for (const order of orders) {
+      if (!order.influencer) continue;
+      const list = agentMap.get(order.influencerId) || [];
+      list.push(order);
+      agentMap.set(order.influencerId, list);
+    }
+
+    // 4. Also fetch chats to provide direct chat deep-links
+    const chats = await this.prisma.chat.findMany({
+      where: {
+        customerId: { in: customerIds },
+      },
+      select: { id: true, influencerId: true },
+    });
+    const chatByInfluencer = new Map<string, string>();
+    for (const chat of chats) {
+      if (chat.influencerId && !chatByInfluencer.has(chat.influencerId)) {
+        chatByInfluencer.set(chat.influencerId, chat.id);
+      }
+    }
+
+    const agentsOverview: Array<{
+      influencerId: string;
+      influencerName: string;
+      avatar?: string;
+      serviceType?: string;
+      bio?: string;
+      orderId: string;
+      status: string;
+      totalOrders: number;
+      completedOrders: number;
+      pendingOrders: number;
+      remainingOrders: number;
+      totalOrderedUnits: number;
+      totalDeliveredUnits: number;
+      remainingUnits: number;
+      chatId?: string;
+      latestOrderDate?: Date;
+    }> = [];
+
+    let overallRemainingOrders = 0;
+    let overallCompletedOrders = 0;
+    let overallPendingOrders = 0;
+
+    for (const [infId, agentOrders] of agentMap.entries()) {
+      const firstOrder = agentOrders[0];
+      const influencer = firstOrder.influencer;
+
+      let completedOrdersCount = 0;
+      let pendingOrdersCount = 0;
+      let totalOrderedUnits = 0;
+      let totalDeliveredUnits = 0;
+
+      for (const o of agentOrders) {
+        let postsDelivered = 0;
+        if (o.projectBrief) {
+          try {
+            const brief = typeof o.projectBrief === 'string' ? JSON.parse(o.projectBrief) : o.projectBrief;
+            if (Array.isArray(brief?.generatedPosts)) {
+              postsDelivered = brief.generatedPosts.length;
+            } else if (Array.isArray(brief?.generatedImages)) {
+              postsDelivered = brief.generatedImages.length;
+            }
+          } catch {}
+        }
+        const effectiveDelivered = Math.max(o.videosDelivered || 0, postsDelivered);
+        const ordered = o.videosOrdered > 0 ? o.videosOrdered : 1;
+        const deliveredForOrder = Math.min(ordered, effectiveDelivered);
+
+        totalOrderedUnits += ordered;
+        totalDeliveredUnits += deliveredForOrder;
+
+        if (o.status === OrderStatus.DELIVERED || deliveredForOrder >= ordered) {
+          completedOrdersCount++;
+        } else if (
+          [OrderStatus.PAID, OrderStatus.GENERATING, OrderStatus.PENDING_REVIEW, OrderStatus.APPROVED].includes(o.status as any)
+        ) {
+          pendingOrdersCount++;
+        }
+      }
+
+      const remainingUnits = Math.max(0, totalOrderedUnits - totalDeliveredUnits);
+      const remainingOrdersCount = Math.max(0, agentOrders.length - completedOrdersCount);
+
+      overallRemainingOrders += remainingUnits;
+      overallCompletedOrders += completedOrdersCount;
+      overallPendingOrders += pendingOrdersCount;
+
+      const isAgentActive = remainingUnits > 0 || pendingOrdersCount > 0 || firstOrder.status !== OrderStatus.DELIVERED;
+
+      agentsOverview.push({
+        influencerId: influencer.id,
+        influencerName: influencer.name,
+        avatar: influencer.avatar || undefined,
+        serviceType: influencer.serviceType,
+        bio: influencer.bio || undefined,
+        orderId: firstOrder.id,
+        status: isAgentActive ? 'ACTIVE' : 'COMPLETED',
+        totalOrders: agentOrders.length,
+        completedOrders: completedOrdersCount,
+        pendingOrders: pendingOrdersCount,
+        remainingOrders: remainingUnits > 0 ? remainingUnits : remainingOrdersCount,
+        totalOrderedUnits,
+        totalDeliveredUnits,
+        remainingUnits,
+        chatId: chatByInfluencer.get(influencer.id) || undefined,
+        latestOrderDate: firstOrder.createdAt,
+      });
+    }
+
+    agentsOverview.sort((a, b) => {
+      if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+      if (b.status === 'ACTIVE' && a.status !== 'ACTIVE') return 1;
+      return +new Date(b.latestOrderDate || 0) - +new Date(a.latestOrderDate || 0);
+    });
+
+    const activeAgentsCount = agentsOverview.filter((a) => a.status === 'ACTIVE').length;
+
+    return {
+      totalAgents: agentsOverview.length,
+      activeAgents: activeAgentsCount,
+      totalRemainingOrders: overallRemainingOrders,
+      totalCompletedOrders: overallCompletedOrders,
+      totalPendingOrders: overallPendingOrders,
+      agents: agentsOverview,
+    };
   }
 }

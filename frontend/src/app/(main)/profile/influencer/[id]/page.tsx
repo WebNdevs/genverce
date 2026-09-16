@@ -9,7 +9,7 @@
  import { Footer } from '@/components/layout/footer';
  import { GET_INFLUENCER } from '@/graphql/queries/influencer';
  import { useAuthStore } from '@/lib/auth';
- import { Shield, Power, PowerOff, Edit, User, CheckCircle, XCircle } from 'lucide-react';
+ import { Power, PowerOff, Edit, User } from 'lucide-react';
  import { gql } from '@apollo/client';
  
  const DEACTIVATE_INFLUENCER = gql`mutation DeactivateInfluencer($id: String!) { deactivateInfluencer(id: $id) { id isActive } }`;

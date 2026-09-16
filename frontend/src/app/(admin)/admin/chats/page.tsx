@@ -48,11 +48,9 @@ export default function AdminChatsPage() {
       )
     : chats;
 
-  if (!mounted) return null;
-
   return (
     <div className="py-2">
-      <motion.div initial={{ opacity: 0, y: 20 }} ani mate={{ opacity: 1, y: 0 }} className="mb-6">
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="mb-6">
         <h1 className="text-3xl font-bold mb-1">
           All <span className="gradient-text">Chats</span>
         </h1>

@@ -13,6 +13,11 @@ class UpdateSiteSettingsInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
+  chatProvider?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
   chatApiUrl?: string;
 
   @Field({ nullable: true })

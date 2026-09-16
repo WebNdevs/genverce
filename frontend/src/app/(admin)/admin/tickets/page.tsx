@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { gql } from '@apollo/client';
 import {
   Send, Search, Ticket, User, Calendar, ShoppingBag,
-  CheckCircle2, Clock, XCircle, AlertCircle, X, Mail,
+  CheckCircle2, Clock, AlertCircle, X, Mail,
   RotateCcw, MessageSquareDiff,
 } from 'lucide-react';
 import { RESOLVE_TICKET, UPDATE_TICKET_STATUS } from '@/graphql/mutations/ticket';
@@ -154,6 +154,10 @@ export default function AdminTicketsPage() {
     }
   };
 
+  const handleStatusFilterChange = (nextTab: string) => {
+    setStatusFilter(nextTab);
+  };
+
   return (
     <>
       {/* Header */}
@@ -165,14 +169,16 @@ export default function AdminTicketsPage() {
       </motion.div>
 
       {/* Status filter tabs */}
-      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+      <div role="tablist" className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
         {FILTER_TABS.map((tab) => {
           const cfg = tab !== 'ALL' ? STATUS_CONFIG[tab] : null;
           const Icon = cfg?.icon;
           return (
             <button
               key={tab}
-              onClick={() => setStatusFilter(tab)}
+              role="tab"
+              aria-selected={statusFilter === tab}
+              onClick={() => handleStatusFilterChange(tab)}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border whitespace-nowrap transition-colors',
                 statusFilter === tab

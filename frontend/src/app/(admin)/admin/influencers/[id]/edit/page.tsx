@@ -569,7 +569,7 @@ export default function EditInfluencerPage() {
                 </Field>
                 <Field label="Chat Model" hint="The specific model ID to use for chat responses.">
                   <input value={aiConfig.chatModel ?? ''} onChange={(e) => setAiConfig(prev => ({ ...prev, chatModel: e.target.value }))}
-                    placeholder="gpt-4o-mini"
+                    placeholder="gpt-4o"
                     className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-brand" />
                 </Field>
               </div>

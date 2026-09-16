@@ -11,20 +11,20 @@ const config: Config = {
     extend: {
       colors: {
         // Genverce Design System
-        background: '#0A0A0F',
-        surface: '#0F0F1A',
+        background: 'rgb(var(--bg-rgb) / <alpha-value>)',
+        surface: 'rgb(var(--surface-rgb) / <alpha-value>)',
         brand: {
           DEFAULT: '#4F46E5',
           hover: '#6366F1',
           light: '#818CF8',
         },
         accent: '#6366F1',
-        border: '#1E1E3A',
+        border: 'rgb(var(--border-rgb) / <alpha-value>)',
         success: '#10B981',
         error: '#EF4444',
         text: {
-          primary: '#F8FAFC',
-          secondary: '#94A3B8',
+          primary: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--text-secondary-rgb) / <alpha-value>)',
         },
       },
       fontFamily: {
@@ -36,7 +36,7 @@ const config: Config = {
       backgroundImage: {
         'gradient-brand': 'linear-gradient(135deg, #4F46E5 0%, #818CF8 100%)',
         'gradient-glow': 'linear-gradient(135deg, #4F46E5 0%, #6366F1 50%, #818CF8 100%)',
-        'gradient-dark': 'linear-gradient(180deg, #0A0A0F 0%, #0F0F1A 100%)',
+        'gradient-dark': 'linear-gradient(180deg, var(--background) 0%, var(--surface) 100%)',
       },
       boxShadow: {
         glow: '0 0 20px rgba(99, 102, 241, 0.3)',

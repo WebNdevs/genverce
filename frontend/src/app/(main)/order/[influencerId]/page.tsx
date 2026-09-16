@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ArrowRight, Check, AlertTriangle, Shield, Zap, Clock,
+  ArrowLeft, ArrowRight, Check, AlertTriangle, Shield, ShieldCheck, Zap, Clock, Sparkles,
 } from 'lucide-react';
 import { Navbar } from '@/components/layout/navbar';
 import { GET_INFLUENCER } from '@/graphql/queries/influencer';
+import { GET_MY_ORDERS } from '@/graphql/queries/order';
 import { CREATE_ORDER, CREATE_CHECKOUT_SESSION } from '@/graphql/mutations/order';
 import { useAuthStore } from '@/lib/auth';
 import { PRICING_PACKAGES, PackageType, DeliveryType, Influencer } from '@/types';
@@ -29,7 +30,7 @@ const inputCls = 'w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-background border border
 export default function OrderPage() {
   const params = useParams();
   const router = useRouter();
-  const { isAuthenticated, hydrated } = useAuthStore();
+  const { isAuthenticated, hydrated, user } = useAuthStore();
   const influencerId = params?.influencerId as string;
 
   const [step, setStep] = useState(0);
@@ -43,6 +44,32 @@ export default function OrderPage() {
   const [deliveryType, setDeliveryType]   = useState<DeliveryType | null>(null);
   const [aiDisclosure, setAiDisclosure]   = useState(true);
 
+  const [hasReusedBrief, setHasReusedBrief] = useState(false);
+  const [isInitialized, setIsInitialized]   = useState(false);
+  const hasInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (hydrated && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [hydrated, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const pkgParam = searchParams.get('package') || searchParams.get('packageType');
+      if (pkgParam && Object.values(PackageType).includes(pkgParam as PackageType)) {
+        setSelectedPackage(pkgParam as PackageType);
+      }
+    }
+  }, []);
+
+  const { data: myOrdersData, loading: ordersLoading } = useQuery(GET_MY_ORDERS, {
+    skip: !isAuthenticated,
+    fetchPolicy: 'cache-and-network',
+    nextFetchPolicy: 'cache-first',
+  });
+
   const { data } = useQuery(GET_INFLUENCER, {
     variables: { id: influencerId },
     skip: !influencerId,
@@ -52,12 +79,14 @@ export default function OrderPage() {
   });
   const influencer = (data?.influencer ?? FALLBACK_INFLUENCER) as unknown as Influencer;
   const serviceType = (influencer as any)?.serviceType as string | undefined;
+
   const unit = (() => {
     if (serviceType === 'POST_CREATION') return { singular: 'post', plural: 'posts' };
     if (serviceType === 'IMAGE_CREATION') return { singular: 'image', plural: 'images' };
     if (serviceType === 'VIDEO_CREATION') return { singular: 'video', plural: 'videos' };
     return { singular: 'item', plural: 'items' };
   })();
+
   const displayPkg = (pkg: any) => {
     if (serviceType === 'POST_CREATION') {
       const count = Number(pkg?.videoCount || 0) || 0;
@@ -95,13 +124,13 @@ export default function OrderPage() {
   };
 
   const availablePackages = (() => {
-    const pkgs = Array.isArray(influencer.packages) ? influencer.packages : [];
+    const pkgs = Array.isArray((influencer as any).packages) ? (influencer as any).packages : [];
     if (pkgs.length === 0) return PRICING_PACKAGES;
     return pkgs
-      .filter((p) => p.isActive)
+      .filter((p: any) => p.isActive)
       .slice()
-      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-      .map((p) => ({
+      .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((p: any) => ({
         type: p.type,
         name: p.name,
         price: p.price,
@@ -111,12 +140,148 @@ export default function OrderPage() {
       }));
   })();
 
+  const previousAgentOrders = useMemo(() => {
+    const orders = myOrdersData?.myOrders || [];
+    return orders
+      .filter(
+        (o: any) =>
+          (o.influencerId === influencerId || o.influencer?.id === influencerId) &&
+          ['PAID', 'GENERATING', 'PENDING_REVIEW', 'APPROVED', 'DELIVERED'].includes(o.status),
+      )
+      .sort((a: any, b: any) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  }, [myOrdersData, influencerId]);
+
+  const usageStats = useMemo(() => {
+    if (previousAgentOrders.length === 0) {
+      return { isHired: false, hasRemainingUsage: false, remainingUnits: 0, totalOrdered: 0, totalDelivered: 0 };
+    }
+
+    let totalOrdered = 0;
+    let totalDelivered = 0;
+    for (const o of previousAgentOrders) {
+      let postsDelivered = 0;
+      let imagesDelivered = 0;
+      if (o.projectBrief) {
+        try {
+          const brief = typeof o.projectBrief === 'string' ? JSON.parse(o.projectBrief) : o.projectBrief;
+          if (Array.isArray(brief?.generatedPosts)) postsDelivered = brief.generatedPosts.length;
+          if (Array.isArray(brief?.generatedImages)) imagesDelivered = brief.generatedImages.length;
+        } catch {}
+      }
+      const effective = Math.max(o.videosDelivered || 0, postsDelivered, imagesDelivered);
+      const ordered = o.videosOrdered > 0 ? o.videosOrdered : 1;
+      const deliveredForOrder = Math.min(ordered, effective);
+      totalOrdered += ordered;
+      totalDelivered += deliveredForOrder;
+    }
+
+    const remainingUnits = Math.max(0, totalOrdered - totalDelivered);
+    return {
+      isHired: true,
+      hasRemainingUsage: remainingUnits > 0,
+      remainingUnits,
+      totalOrdered,
+      totalDelivered,
+    };
+  }, [previousAgentOrders]);
+
+  const existingBriefData = useMemo(() => {
+    for (const o of previousAgentOrders) {
+      if (!o.projectBrief) continue;
+      try {
+        const brief = typeof o.projectBrief === 'string' ? JSON.parse(o.projectBrief) : o.projectBrief;
+        if (brief && typeof brief === 'object') {
+          const pName = brief.productName || brief.brandName || user?.productName || user?.brandName || '';
+          const kMsg = brief.keyMessage || brief.notes || '';
+          const tAud = brief.targetAudience || user?.targetAudience || '';
+          const tn = brief.tone || user?.tone || '';
+          const inc = Array.isArray(brief.inclusions) ? brief.inclusions : [];
+          const notes = brief.additionalNotes || (brief.notes && brief.notes !== kMsg ? brief.notes : '') || '';
+
+          if (pName || kMsg || tAud || tn) {
+            return {
+              productName: pName,
+              keyMessage: kMsg || 'Engage target audience and showcase brand value',
+              targetAudience: tAud || 'Target audience',
+              tone: tn || 'Professional',
+              inclusions: inc,
+              additionalNotes: notes,
+            };
+          }
+        }
+      } catch {}
+    }
+
+    if (user?.brandName || user?.productName || user?.targetAudience || user?.tone) {
+      return {
+        productName: user?.productName || user?.brandName || '',
+        keyMessage: 'Engage target audience and showcase brand value',
+        targetAudience: user?.targetAudience || 'Target audience',
+        tone: user?.tone || 'Professional',
+        inclusions: [],
+        additionalNotes: '',
+      };
+    }
+    return null;
+  }, [previousAgentOrders, user]);
+
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated) return;
+    if (hasInitializedRef.current) return;
+    if (ordersLoading && !myOrdersData) return;
+
+    hasInitializedRef.current = true;
+    setIsInitialized(true);
+
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const forceStep = searchParams?.get('step');
+    const isAddUsageMode = searchParams?.get('mode') === 'add-usage';
+
+    // If client has already hired this AI agent once:
+    // If they have used all of its available usage (or adding more usage):
+    // Do not ask for the Project Brief again.
+    // Automatically reuse and pre-fill the existing information, and take them directly to Step 2: Package (step index 1).
+    if (usageStats.isHired) {
+      if (existingBriefData) {
+        setProductName(existingBriefData.productName || '');
+        setKeyMessage(existingBriefData.keyMessage || '');
+        setTargetAudience(existingBriefData.targetAudience || '');
+        setTone(existingBriefData.tone || 'Professional');
+        setInclusions(existingBriefData.inclusions || []);
+        setAdditionalNotes(existingBriefData.additionalNotes || '');
+        setHasReusedBrief(true);
+      }
+
+      const shouldSkipBrief =
+        forceStep === null &&
+        (usageStats.remainingUnits <= 0 || !usageStats.hasRemainingUsage || isAddUsageMode || true);
+
+      if (shouldSkipBrief) {
+        setStep(1); // Directly to Step 2: Package
+      } else if (forceStep) {
+        setStep(parseInt(forceStep, 10) || 0);
+      }
+    } else {
+      if (user?.brandName || user?.productName) {
+        setProductName(user?.productName || user?.brandName || '');
+      }
+      if (user?.targetAudience) {
+        setTargetAudience(user.targetAudience);
+      }
+      if (user?.tone) {
+        setTone(user.tone);
+      }
+      if (forceStep) {
+        setStep(parseInt(forceStep, 10) || 0);
+      }
+    }
+  }, [hydrated, isAuthenticated, ordersLoading, myOrdersData, usageStats, existingBriefData, user]);
+
   const [createOrder,   { loading: orderLoading }]    = useMutation(CREATE_ORDER);
   const [createCheckout, { loading: checkoutLoading }] = useMutation(CREATE_CHECKOUT_SESSION);
   const isLoading = orderLoading || checkoutLoading;
 
-  if (!hydrated) return null;
-  if (!isAuthenticated) { router.push('/login'); return null; }
+  if (!hydrated || !isAuthenticated) return null;
 
   const toggleInclusion = (item: string) =>
     setInclusions((prev) => prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]);
@@ -151,7 +316,7 @@ export default function OrderPage() {
     }
   };
 
-  const selectedPkg = availablePackages.find((p) => p.type === selectedPackage);
+  const selectedPkg = availablePackages.find((p: any) => p.type === selectedPackage);
 
   if ((influencer as any)?.isActive === false) {
     return (
@@ -193,53 +358,107 @@ export default function OrderPage() {
                   : influencer.name.charAt(0)}
               </div>
               <div>
-                <p className="text-xs text-text-secondary">Hiring</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-text-secondary">
+                    {usageStats.isHired ? 'Add Usage for' : 'Hiring'}
+                  </p>
+                  {hasReusedBrief && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand/10 text-brand-light border border-brand/20">
+                      Existing Client
+                    </span>
+                  )}
+                </div>
                 <h1 className="text-lg sm:text-xl font-bold leading-tight">{influencer.name}</h1>
               </div>
             </div>
 
             {/* Step progress */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {STEPS.map((s, i) => (
-                <div key={s} className="flex items-center gap-1.5 sm:gap-2 flex-1 last:flex-none">
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                    <div className={cn(
-                      'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
-                      i < step  ? 'bg-success text-white' :
-                      i === step ? 'bg-brand text-white' :
-                                   'bg-surface border border-border text-text-secondary'
-                    )}>
-                      {i < step ? <Check size={13} /> : i + 1}
-                    </div>
-                    <span className={cn(
-                      'text-xs sm:text-sm whitespace-nowrap',
-                      i === step ? 'text-text-primary font-medium' : 'text-text-secondary',
-                      i !== step && 'hidden sm:block'
-                    )}>
-                      {s}
-                    </span>
+              {STEPS.map((s, i) => {
+                const isCompleted = i < step;
+                const isCurrent = i === step;
+                const canNavigate = isCompleted || (i === 0 && hasReusedBrief);
+                return (
+                  <div key={s} className="flex items-center gap-1.5 sm:gap-2 flex-1 last:flex-none">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (canNavigate) setStep(i);
+                      }}
+                      disabled={!canNavigate && !isCurrent}
+                      className={cn(
+                        'flex items-center gap-1.5 sm:gap-2 flex-shrink-0 text-left transition-all',
+                        canNavigate ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+                        isCompleted ? 'bg-success text-white' :
+                        isCurrent   ? 'bg-brand text-white shadow-sm' :
+                                      'bg-surface border border-border text-text-secondary'
+                      )}>
+                        {isCompleted ? <Check size={13} /> : i + 1}
+                      </div>
+                      <span className={cn(
+                        'text-xs sm:text-sm whitespace-nowrap',
+                        isCurrent ? 'text-text-primary font-medium' : 'text-text-secondary',
+                        !isCurrent && 'hidden sm:block'
+                      )}>
+                        {s}
+                      </span>
+                    </button>
+                    {i < STEPS.length - 1 && (
+                      <div className={cn('flex-1 h-px', i < step ? 'bg-success/50' : 'bg-border')} />
+                    )}
                   </div>
-                  {i < STEPS.length - 1 && (
-                    <div className={cn('flex-1 h-px', i < step ? 'bg-success/50' : 'bg-border')} />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Step content */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {/* ── Step 0: Brief ── */}
-              {step === 0 && (
-                <div className="glass-card p-4 sm:p-6 space-y-4 sm:space-y-5">
-                  <h2 className="text-lg sm:text-xl font-semibold">Project Brief</h2>
+          {/* Loading state while checking previous orders */}
+          {!isInitialized && ordersLoading && !myOrdersData ? (
+            <div className="glass-card p-6 sm:p-8 space-y-4 animate-pulse">
+              <div className="h-5 bg-border/60 rounded-lg w-1/3" />
+              <div className="space-y-3 pt-2">
+                <div className="h-14 bg-surface rounded-xl border border-border/50" />
+                <div className="h-14 bg-surface rounded-xl border border-border/50" />
+                <div className="h-14 bg-surface rounded-xl border border-border/50" />
+              </div>
+              <p className="text-xs text-text-secondary text-center pt-2">
+                Checking your previous project details…
+              </p>
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                {/* ── Step 0: Brief ── */}
+                {step === 0 && (
+                  <div className="glass-card p-4 sm:p-6 space-y-4 sm:space-y-5">
+                    {hasReusedBrief && (
+                      <div className="p-3.5 rounded-xl bg-success/10 border border-success/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs sm:text-sm">
+                        <div className="flex items-center gap-2 text-success min-w-0">
+                          <Check size={15} className="flex-shrink-0" />
+                          <span className="font-medium truncate">
+                            Pre-filled with your saved project brief for {influencer.name}.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setStep(1)}
+                          className="self-start sm:self-auto text-xs font-semibold text-brand hover:underline flex-shrink-0"
+                        >
+                          Return to Packages →
+                        </button>
+                      </div>
+                    )}
+                    <h2 className="text-lg sm:text-xl font-semibold">Project Brief</h2>
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1.5">
                       Product / Brand Name <span className="text-error">*</span>
@@ -309,9 +528,33 @@ export default function OrderPage() {
               {/* ── Step 1: Package ── */}
               {step === 1 && (
                 <div className="glass-card p-4 sm:p-6">
+                  {hasReusedBrief && (
+                    <div className="mb-5 p-3.5 sm:p-4 rounded-xl bg-brand/10 border border-brand/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-6 h-6 rounded-full bg-brand/20 text-brand-light flex items-center justify-center flex-shrink-0">
+                          <Check size={13} className="text-brand-light" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-text-primary">
+                            Project Brief automatically reused
+                          </p>
+                          <p className="text-text-secondary text-xs truncate">
+                            Using saved brief from your previous project with {influencer.name}: <span className="font-medium text-text-primary">{productName || 'Your Project'}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStep(0)}
+                        className="self-start sm:self-auto text-xs font-semibold text-brand-light hover:underline flex-shrink-0"
+                      >
+                        Review / Edit Brief →
+                      </button>
+                    </div>
+                  )}
                   <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-5">Select a Package</h2>
                   <div className="space-y-3">
-                    {availablePackages.map((pkg) => (
+                    {availablePackages.map((pkg: any) => (
                       <button key={pkg.type} onClick={() => setSelectedPackage(pkg.type)}
                         className={cn(
                           'w-full p-4 sm:p-5 rounded-xl border text-left transition-all',
@@ -411,17 +654,42 @@ export default function OrderPage() {
                   </div>
 
                   {/* AI Disclosure toggle */}
-                  <div className="mt-4 p-4 bg-background rounded-xl border border-border">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">AI Disclosure Label</p>
-                        <p className="text-xs text-text-secondary mt-0.5">Add "AI-generated content" label to your {unit.singular}</p>
+                  <div className="mt-5 glass-card p-4 sm:p-5 rounded-2xl border border-border/80 hover:border-brand/30 transition-all duration-200 shadow-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand-light flex-shrink-0 mt-0.5 sm:mt-0">
+                          <ShieldCheck size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <p className="text-sm font-semibold text-text-primary">AI Disclosure Label</p>
+                            <span className={cn('px-2.5 py-0.5 text-[11px] font-medium rounded-full transition-colors border', aiDisclosure ? 'bg-success/10 text-success border-success/30' : 'bg-surface text-text-secondary border-border')}>
+                              {aiDisclosure ? 'Enabled' : 'Disabled'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-secondary mt-1 leading-relaxed">
+                            Add an &quot;AI-generated content&quot; label to your {unit.singular} for transparency and platform compliance.
+                          </p>
+                        </div>
                       </div>
                       <button
+                        type="button"
+                        role="switch"
+                        aria-checked={aiDisclosure}
+                        aria-label="Toggle AI Disclosure Label"
                         onClick={() => setAiDisclosure(!aiDisclosure)}
-                        className={cn('w-12 h-6 rounded-full transition-colors relative flex-shrink-0', aiDisclosure ? 'bg-brand' : 'bg-border')}
+                        className={cn(
+                          'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background',
+                          aiDisclosure ? 'bg-brand' : 'bg-border/80 hover:bg-border'
+                        )}
                       >
-                        <span className={cn('absolute top-1 w-4 h-4 rounded-full bg-white transition-transform shadow-sm', aiDisclosure ? 'translate-x-7' : 'translate-x-1')} />
+                        <span className="sr-only">Toggle AI Disclosure</span>
+                        <span
+                          className={cn(
+                            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out',
+                            aiDisclosure ? 'translate-x-5' : 'translate-x-0'
+                          )}
+                        />
                       </button>
                     </div>
                   </div>
@@ -489,6 +757,7 @@ export default function OrderPage() {
               )}
             </motion.div>
           </AnimatePresence>
+        )}
         </div>
 
         {/* Navigation — sticky on mobile, inline on desktop */}

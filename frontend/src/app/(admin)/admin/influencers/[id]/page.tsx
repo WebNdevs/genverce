@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation } from '@apollo/client';
@@ -164,6 +164,9 @@ export default function InfluencerDashboardPage() {
   const [tab, setTab] = useState<'projects' | 'chats'>(
     searchParams.get('tab') === 'chats' ? 'chats' : 'projects'
   );
+  const handleTabSwitch = (nextTab: 'projects' | 'chats') => {
+    setTab(nextTab);
+  };
   const [chatSearch, setChatSearch] = useState('');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
@@ -426,12 +429,12 @@ export default function InfluencerDashboardPage() {
 
           {/* Tabs */}
           <div className="glass-card overflow-hidden">
-            <div className="flex border-b border-border">
+            <div role="tablist" className="flex border-b border-border">
               {([
                 { key: 'projects', label: 'Client Projects', icon: Package, count: orders.length },
                 { key: 'chats', label: 'Chats', icon: MessageSquare, count: chats.length },
               ] as const).map(({ key, label, icon: Icon, count }) => (
-                <button key={key} onClick={() => setTab(key)}
+                <button key={key} role="tab" aria-selected={tab === key} onClick={() => handleTabSwitch(key)}
                   className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${tab === key ? 'border-brand text-brand-light' : 'border-transparent text-text-secondary hover:text-text-primary'
                     }`}>
                   <Icon size={14} />
@@ -443,7 +446,7 @@ export default function InfluencerDashboardPage() {
             </div>
 
             {/* Projects tab */}
-            {tab === 'projects' && (
+            {tab === 'projects' ? (
               orders.length === 0 ? (
                 <div className="p-12 text-center">
                   <Package size={32} className="mx-auto text-text-secondary mb-3" />
@@ -476,8 +479,8 @@ export default function InfluencerDashboardPage() {
                         const posters = Array.isArray(posterPlan?.posters) ? posterPlan.posters : [];
                         const isExpanded = expandedOrderId === order.id;
                         return (
-                          <>
-                            <tr key={order.id} className="border-b border-border hover:bg-surface/60 transition-colors group">
+                          <Fragment key={order.id}>
+                            <tr className="border-b border-border hover:bg-surface/60 transition-colors group">
                               <td className="px-4 py-3">
                                 <Link href={`/admin/orders/${order.id}?from=${id}`} className="flex items-center gap-2">
                                   <div className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center text-xs font-bold gradient-text flex-shrink-0">
@@ -569,17 +572,15 @@ export default function InfluencerDashboardPage() {
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </Fragment>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
               )
-            )}
-
-            {/* Chats tab */}
-            {tab === 'chats' && (
+            ) : (
+              /* Chats tab */
               <div className="p-4">
                 <div className="relative mb-4 max-w-sm">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />

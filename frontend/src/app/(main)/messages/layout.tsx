@@ -5,7 +5,9 @@ export default function MessagesLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <Navbar />
-      {children}
+      <div className="pt-16 h-screen overflow-hidden bg-background">
+        {children}
+      </div>
     </>
   );
 }

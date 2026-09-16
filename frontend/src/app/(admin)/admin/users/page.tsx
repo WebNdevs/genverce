@@ -4,10 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Search, Pencil, X, Save, Trash2, RotateCcw, Users, Trash, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Power, PowerOff, Search, Pencil, X, Save, Trash2, RotateCcw, Users, Trash, ChevronLeft, ChevronRight, Bot, Sparkles, CheckCircle, Loader2, Briefcase } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth';
 import { toast } from '@/components/ui/toaster';
 import { gql } from '@apollo/client';
+import { GET_INFLUENCERS } from '@/graphql/queries/influencer';
+import { ADMIN_HIRE_AGENT_FOR_USER } from '@/graphql/mutations/user';
+import { ADMIN_USER_HIRED_AGENTS } from '@/graphql/queries/user';
 
 const GET_ALL_USERS = gql`query GetAllUsers { allUsers { id name email role accountType company isActive createdAt deletedAt } }`;
 const GET_TRASHED_USERS = gql`query GetTrashedUsers { trashedUsers { id name email role accountType company isActive createdAt deletedAt } }`;
@@ -143,21 +146,135 @@ export default function AdminUsersPage() {
     });
   };
 
+  const handleTabSwitch = (nextTab: Tab) => {
+    if (nextTab === tab) return;
+    setTab(nextTab);
+    setQuery('');
+    setEditingId(null);
+    setConfirmDeleteId(null);
+    setPage(1);
+  };
+
+  const [hireModalOpen, setHireModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<any | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+  const [agentSearch, setAgentSearch] = useState('');
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+
+  // Fetch all AI Agents
+  const { data: influencersData } = useQuery(GET_INFLUENCERS, {
+    variables: { filter: { limit: 100 } },
+  });
+  const availableAgents = useMemo(() => {
+    return (influencersData?.influencers?.influencers || []).filter((i: any) => !i.deletedAt);
+  }, [influencersData]);
+
+  // Query hired agents for the selected user
+  const { data: hiredAgentsData, refetch: refetchHiredAgents } = useQuery(ADMIN_USER_HIRED_AGENTS, {
+    variables: { userId: selectedUser?.id || '' },
+    skip: !selectedUser?.id,
+    fetchPolicy: 'network-only',
+  });
+
+  const hiredAgentIds = useMemo(() => {
+    const list = hiredAgentsData?.adminUserHiredAgents || [];
+    return new Set(list.map((x: any) => x.influencerId));
+  }, [hiredAgentsData]);
+
+  // Mutation to hire agent
+  const [hireAgent, { loading: hiringLoading }] = useMutation(ADMIN_HIRE_AGENT_FOR_USER, {
+    onCompleted: (res) => {
+      const result = res?.adminHireAgentForUser;
+      if (result?.success) {
+        toast({
+          title: result.alreadyHired ? 'Agent Already Active' : 'AI Agent Hired Successfully!',
+          description: result.message,
+          variant: 'success',
+        });
+        refetch();
+        if (selectedUser?.id) refetchHiredAgents();
+      } else {
+        toast({
+          title: 'Hire Notice',
+          description: result?.message || 'Could not complete hire',
+        });
+      }
+    },
+    onError: (err) => {
+      toast({
+        title: 'Hiring Failed',
+        description: err.message,
+        variant: 'error',
+      });
+    },
+  });
+
+  const openDirectHireModal = (targetUser?: any) => {
+    if (targetUser) {
+      setSelectedUser(targetUser);
+      setUserSearch(targetUser.name || targetUser.email || '');
+    } else {
+      setSelectedUser(null);
+      setUserSearch('');
+    }
+    setSelectedAgent(null);
+    setAgentSearch('');
+    setUserDropdownOpen(false);
+    setHireModalOpen(true);
+  };
+
+  const closeDirectHireModal = () => {
+    setHireModalOpen(false);
+    setSelectedUser(null);
+    setSelectedAgent(null);
+    setUserSearch('');
+    setAgentSearch('');
+    setUserDropdownOpen(false);
+  };
+
+  const handleDirectHire = () => {
+    if (!selectedUser?.id || !selectedAgent?.id) {
+      toast({ title: 'Selection required', description: 'Please select both a user and an AI Agent.', variant: 'error' });
+      return;
+    }
+    hireAgent({
+      variables: {
+        userId: selectedUser.id,
+        influencerId: selectedAgent.id,
+      },
+    });
+  };
+
   const isLoading = tab === 'active' ? loading : trashedLoading;
 
   return (
     <>
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-        <h1 className="text-2xl font-semibold">User <span className="gradient-text">Management</span></h1>
-        <p className="text-sm text-text-secondary mt-1">
-          {tab === 'active' ? `${users.length} registered users` : `${trashedUsers.length} users in trash`}
-        </p>
-      </motion.div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-2xl font-semibold">User <span className="gradient-text">Management</span></h1>
+          <p className="text-sm text-text-secondary mt-1">
+            {tab === 'active' ? `${users.length} registered users` : `${trashedUsers.length} users in trash`}
+          </p>
+        </motion.div>
+
+        {tab === 'active' && (
+          <button
+            onClick={() => openDirectHireModal()}
+            className="btn-brand flex items-center justify-center gap-2 text-sm px-4 py-2.5 rounded-xl shadow-lg shadow-brand/20 transition-all hover:scale-[1.02] w-fit"
+          >
+            <Bot size={17} />
+            <span>Direct Hire AI Agent</span>
+          </button>
+        )}
+      </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-4 p-1 bg-surface/50 border border-border rounded-xl w-fit">
+      <div role="tablist" className="flex items-center gap-1 mb-4 p-1 bg-surface/50 border border-border rounded-xl w-fit">
         <button
-          onClick={() => { setTab('active'); setQuery(''); setEditingId(null); setConfirmDeleteId(null); setPage(1); }}
+          role="tab"
+          aria-selected={tab === 'active'}
+          onClick={() => handleTabSwitch('active')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'active'
               ? 'bg-background text-text-primary shadow-sm'
               : 'text-text-secondary hover:text-text-primary'
@@ -171,7 +288,9 @@ export default function AdminUsersPage() {
           )}
         </button>
         <button
-          onClick={() => { setTab('trash'); setQuery(''); setEditingId(null); setConfirmDeleteId(null); setPage(1); }}
+          role="tab"
+          aria-selected={tab === 'trash'}
+          onClick={() => handleTabSwitch('trash')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'trash'
               ? 'bg-background text-text-primary shadow-sm'
               : 'text-text-secondary hover:text-text-primary'
@@ -262,6 +381,14 @@ export default function AdminUsersPage() {
                       <div className="flex items-center justify-end gap-2">
                         {tab === 'active' ? (
                           <>
+                            <button
+                              onClick={() => openDirectHireModal(u)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand/10 text-brand-light hover:bg-brand/20 transition-colors"
+                              title={`Hire an AI Agent for ${u.name}`}
+                            >
+                              <Bot size={14} />
+                              <span className="hidden lg:inline">Hire Agent</span>
+                            </button>
                             <button
                               onClick={() => editingId === u.id ? closeEdit() : openEdit(u)}
                               className={`p-1.5 rounded-lg transition-colors ${editingId === u.id ? 'text-brand-light bg-brand/10' : 'text-text-secondary hover:text-text-primary hover:bg-surface'}`}
@@ -449,6 +576,271 @@ export default function AdminUsersPage() {
           )}
         </div>
       )}
+
+      {/* Direct Hire AI Agent Modal */}
+      <AnimatePresence>
+        {hireModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-2xl bg-surface border border-border rounded-2xl p-6 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand-light">
+                    <Bot size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-text-primary">Direct Hire AI Agent</h3>
+                    <p className="text-xs text-text-secondary">Instantly assign any AI Agent to any user without payment or checkout</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDirectHireModal}
+                  className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface/80 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto py-5 space-y-6 pr-1">
+                {/* Step 1: Select User */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
+                    1. Select User
+                  </label>
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                    <input
+                      type="text"
+                      value={userSearch}
+                      onChange={(e) => {
+                        setUserSearch(e.target.value);
+                        setUserDropdownOpen(true);
+                      }}
+                      onFocus={() => setUserDropdownOpen(true)}
+                      placeholder="Search user by name or email..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    />
+                  </div>
+
+                  {/* Selected User Display */}
+                  {selectedUser && (
+                    <div className="mt-2.5 p-3.5 bg-brand/5 border border-brand/20 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center font-bold text-sm gradient-text">
+                          {(selectedUser.name || selectedUser.email || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-text-primary">{selectedUser.name}</p>
+                          <p className="text-xs text-text-secondary">
+                            {selectedUser.email} · <span className={ROLE_COLORS[selectedUser.role] || ''}>{selectedUser.role}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-brand/20 text-brand-light">
+                        Target User
+                      </span>
+                    </div>
+                  )}
+
+                  {/* User Dropdown Suggestions */}
+                  {userDropdownOpen && (
+                    <div className="mt-1.5 max-h-48 overflow-y-auto bg-surface border border-border rounded-xl shadow-xl divide-y divide-border/50">
+                      {users
+                        .filter((u: any) =>
+                          !userSearch ||
+                          u.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
+                          u.email?.toLowerCase().includes(userSearch.toLowerCase())
+                        )
+                        .map((u: any) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setUserSearch(u.name || u.email);
+                              setUserDropdownOpen(false);
+                            }}
+                            className={`w-full text-left p-3 hover:bg-background/80 transition-colors flex items-center justify-between ${
+                              selectedUser?.id === u.id ? 'bg-brand/10' : ''
+                            }`}
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-text-primary">{u.name}</p>
+                              <p className="text-xs text-text-secondary">{u.email}</p>
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-text-secondary">
+                              {u.role}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* User's Currently Hired Agents */}
+                  {selectedUser && hiredAgentsData?.adminUserHiredAgents && hiredAgentsData.adminUserHiredAgents.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-text-secondary mb-1.5">Already Hired Agents for this user:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {hiredAgentsData.adminUserHiredAgents.map((ha: any) => (
+                          <span
+                            key={ha.influencerId}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                          >
+                            <CheckCircle size={12} />
+                            {ha.influencerName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 2: Select AI Agent */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">
+                    2. Select AI Agent
+                  </label>
+                  <div className="relative mb-2.5">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                    <input
+                      type="text"
+                      value={agentSearch}
+                      onChange={(e) => setAgentSearch(e.target.value)}
+                      placeholder="Search AI Agent by name or niche..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    />
+                  </div>
+
+                  {/* AI Agent Selection Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                    {availableAgents
+                      .filter((inf: any) =>
+                        !agentSearch ||
+                        inf.name?.toLowerCase().includes(agentSearch.toLowerCase()) ||
+                        (inf.industries && inf.industries.some((ind: string) => ind.toLowerCase().includes(agentSearch.toLowerCase())))
+                      )
+                      .map((inf: any) => {
+                        const isSelected = selectedAgent?.id === inf.id;
+                        const isAlreadyHired = hiredAgentIds.has(inf.id);
+
+                        return (
+                          <div
+                            key={inf.id}
+                            onClick={() => setSelectedAgent(inf)}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
+                              isSelected
+                                ? 'border-brand bg-brand/10 ring-1 ring-brand/40'
+                                : isAlreadyHired
+                                ? 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500/50'
+                                : 'border-border bg-background/50 hover:bg-background hover:border-border-hover'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-surface border border-border overflow-hidden flex items-center justify-center flex-shrink-0">
+                                {inf.avatar ? (
+                                  <img src={inf.avatar} alt={inf.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Bot size={18} className="text-brand-light" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-text-primary truncate">{inf.name}</p>
+                                <p className="text-[11px] text-text-secondary truncate">
+                                  {inf.industries?.[0] || 'AI Creator'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end flex-shrink-0">
+                              {isAlreadyHired ? (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                  <CheckCircle size={10} /> Active
+                                </span>
+                              ) : (
+                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md ${
+                                  isSelected ? 'bg-brand text-white' : 'bg-surface text-text-secondary border border-border'
+                                }`}>
+                                  {isSelected ? 'Selected' : 'Select'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* Assignment Summary Box */}
+                {selectedUser && selectedAgent && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-xl border border-brand/20 bg-brand/5 space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between text-text-secondary">
+                      <span>Assignment Mode:</span>
+                      <span className="font-semibold text-text-primary">Super Admin Direct Hire</span>
+                    </div>
+                    <div className="flex items-center justify-between text-text-secondary">
+                      <span>Target User:</span>
+                      <span className="font-medium text-text-primary">{selectedUser.name} ({selectedUser.email})</span>
+                    </div>
+                    <div className="flex items-center justify-between text-text-secondary">
+                      <span>AI Agent:</span>
+                      <span className="font-medium text-brand-light">{selectedAgent.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-text-secondary">
+                      <span>Cost:</span>
+                      <span className="font-semibold text-emerald-400">$0.00 (Direct Activation · No Checkout Required)</span>
+                    </div>
+                    {hiredAgentIds.has(selectedAgent.id) && (
+                      <p className="text-amber-400 pt-1">
+                        Notice: {selectedAgent.name} is already active for this user. Clicking Hire will reaffirm access and refresh their chat.
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-4 border-t border-border flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeDirectHireModal}
+                  className="px-4 py-2 rounded-xl text-sm text-text-secondary hover:text-text-primary hover:bg-surface transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedUser || !selectedAgent || hiringLoading}
+                  onClick={handleDirectHire}
+                  className="btn-brand flex items-center gap-2 text-sm px-6 py-2.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-brand/20"
+                >
+                  {hiringLoading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Assigning Agent...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Hire AI Agent
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

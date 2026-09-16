@@ -107,6 +107,22 @@ export interface Message {
   createdAt: string;
 }
 
+export interface GeneratedPost {
+  id: string;
+  title: string;
+  caption: string;
+  content?: string | null;
+  hashtags: string[];
+  imageUrl?: string | null;
+  imagePrompt?: string | null;
+  platforms?: string[] | null;
+  topic?: string | null;
+  tone?: string | null;
+  callToAction?: string | null;
+  createdAt: string;
+  delivered?: boolean | null;
+}
+
 export interface Order {
   id: string;
   customerId: string;
@@ -120,6 +136,7 @@ export interface Order {
   thumbnailUrl?: string;
   deliveredAt?: string | null;
   generatedImages?: { url: string; messageId: string; createdAt: string; delivered?: boolean | null; deliveredAt?: string | null }[];
+  generatedPosts?: GeneratedPost[];
   aiDisclosure: boolean;
   videosOrdered: number;
   videosDelivered: number;

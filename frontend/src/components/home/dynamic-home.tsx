@@ -23,23 +23,19 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
 const STORAGE_KEY = 'genverce_home_layout';
 
 export function DynamicHome() {
-  const [mounted, setMounted] = useState(false);
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT);
 
   useEffect(() => {
-    setMounted(true);
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as LayoutItem[];
-        if (Array.isArray(parsed) && parsed.every(i => i && typeof i.type === 'string')) {
+        if (Array.isArray(parsed) && parsed.every((i) => i && typeof i.type === 'string')) {
           setLayout(parsed as LayoutItem[]);
         }
       }
     } catch {}
   }, []);
-
-  if (!mounted) return null;
 
   const renderSection = (item: LayoutItem, idx: number) => {
     if (!item.enabled) return null;
@@ -52,3 +48,4 @@ export function DynamicHome() {
 
   return <>{layout.map((item, idx) => renderSection(item, idx))}</>;
 }
+

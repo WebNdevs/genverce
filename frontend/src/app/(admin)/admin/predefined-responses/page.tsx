@@ -1,15 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Pencil, Trash2, Check, X,
   ToggleLeft, ToggleRight, MessageSquareQuote, Shuffle,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { GET_FAQ_ENTRIES } from '@/graphql/queries/faq';
 import { CREATE_FAQ_ENTRY, UPDATE_FAQ_ENTRY, DELETE_FAQ_ENTRY } from '@/graphql/mutations/faq';
+import { useAuthStore } from '@/lib/auth';
 import { toast } from '@/components/ui/toaster';
 
 const PAGE_SIZE = 5;
@@ -63,7 +65,19 @@ function AnswersEditor({
 }
 
 export default function FaqAdminPage() {
-  const { data, loading, refetch } = useQuery(GET_FAQ_ENTRIES, { fetchPolicy: 'cache-and-network' });
+  const router = useRouter();
+  const { user, isAuthenticated, hydrated } = useAuthStore();
+
+  useEffect(() => {
+    if (hydrated && (!isAuthenticated || user?.role !== 'ADMIN')) {
+      router.push('/login');
+    }
+  }, [hydrated, isAuthenticated, user, router]);
+
+  const { data, loading, error, refetch } = useQuery(GET_FAQ_ENTRIES, {
+    fetchPolicy: 'cache-and-network',
+    skip: !isAuthenticated || user?.role !== 'ADMIN',
+  });
   const entries: any[] = data?.faqEntries ?? [];
 
   const [showForm, setShowForm] = useState(false);
@@ -244,6 +258,17 @@ export default function FaqAdminPage() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <div key={i} className="skeleton h-24 rounded-xl" />)}
+        </div>
+      ) : error ? (
+        <div className="glass-card p-8 sm:p-10 text-center space-y-3">
+          <AlertCircle size={32} className="mx-auto text-error/70" />
+          <p className="text-sm text-text-secondary">Failed to load predefined responses: {error.message}</p>
+          <button
+            onClick={() => refetch()}
+            className="btn-ghost flex items-center gap-2 mx-auto text-xs px-3 py-1.5 border border-border"
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
         </div>
       ) : entries.length === 0 ? (
         <div className="glass-card p-10 sm:p-12 text-center">

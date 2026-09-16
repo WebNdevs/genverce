@@ -29,7 +29,6 @@ export class ProjectBriefInput {
   @IsString()
   additionalNotes?: string;
 
-  // ADD THIS
   @Field(() => String, { nullable: true })
   @IsOptional()
   posterPlan?: string;

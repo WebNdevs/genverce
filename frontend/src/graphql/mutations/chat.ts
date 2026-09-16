@@ -37,3 +37,37 @@ export const START_CHAT = gql`
     }
   }
 `;
+
+export const CREATE_CHAT_NOTE = gql`
+  mutation CreateChatNote($chatId: String!, $content: String!, $title: String) {
+    createChatNote(chatId: $chatId, content: $content, title: $title) {
+      id
+      chatId
+      userId
+      title
+      content
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_CHAT_NOTE = gql`
+  mutation UpdateChatNote($noteId: String!, $content: String!, $title: String) {
+    updateChatNote(noteId: $noteId, content: $content, title: $title) {
+      id
+      chatId
+      userId
+      title
+      content
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const DELETE_CHAT_NOTE = gql`
+  mutation DeleteChatNote($noteId: String!) {
+    deleteChatNote(noteId: $noteId)
+  }
+`;

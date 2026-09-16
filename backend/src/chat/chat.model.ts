@@ -27,6 +27,30 @@ export class MessageModel {
 }
 
 @ObjectType()
+export class ChatNoteModel {
+  @Field(() => ID)
+  id: string;
+
+  @Field()
+  chatId: string;
+
+  @Field()
+  userId: string;
+
+  @Field({ nullable: true })
+  title?: string;
+
+  @Field()
+  content: string;
+
+  @Field()
+  createdAt: Date;
+
+  @Field()
+  updatedAt: Date;
+}
+
+@ObjectType()
 export class ChatModel {
   @Field(() => ID)
   id: string;
@@ -39,6 +63,9 @@ export class ChatModel {
 
   @Field(() => [MessageModel])
   messages: MessageModel[];
+
+  @Field(() => [ChatNoteModel], { nullable: true })
+  notes?: ChatNoteModel[];
 
   @Field(() => InfluencerModel, { nullable: true })
   influencer?: InfluencerModel;

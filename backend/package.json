@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed/index.ts",
+    "seed:orders": "ts-node prisma/seed/seed-orders.ts",
     "prisma:studio": "prisma studio",
     "db:push": "prisma db push"
   },

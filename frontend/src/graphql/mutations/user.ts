@@ -48,3 +48,18 @@ export const COMPLETE_ONBOARDING = gql`
     }
   }
 `;
+
+export const ADMIN_HIRE_AGENT_FOR_USER = gql`
+  mutation AdminHireAgentForUser($userId: String!, $influencerId: String!) {
+    adminHireAgentForUser(userId: $userId, influencerId: $influencerId) {
+      success
+      message
+      orderId
+      userId
+      influencerId
+      influencerName
+      userName
+      alreadyHired
+    }
+  }
+`;

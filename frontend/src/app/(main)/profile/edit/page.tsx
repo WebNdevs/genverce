@@ -137,17 +137,15 @@ export default function ProfileEditPage() {
   };
   const strength = pwStrength(newPw);
 
-  if (!mounted) return null;
-
   return (
     <div className="py-2 max-w-2xl">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <h1 className="text-3xl font-bold">Profile <span className="gradient-text">Settings</span></h1>
         <p className="text-text-secondary mt-1">Manage your account information</p>
       </motion.div>
 
       {/* ── Profile Info Card ── */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="glass-card p-6 space-y-5 mb-6">
         <h2 className="font-semibold text-base flex items-center gap-2">
           <User size={16} className="text-brand-light" />
@@ -220,7 +218,7 @@ export default function ProfileEditPage() {
       </motion.div>
 
       {/* ── Change Password Card ── */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }}
+      <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }}
         className="glass-card p-6">
         <button
           onClick={() => setShowPwSection(!showPwSection)}

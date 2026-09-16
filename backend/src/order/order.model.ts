@@ -27,6 +27,10 @@ export class GeneratedImageModel {
   deliveredAt?: Date;
 }
 
+import { GeneratedPostModel } from '../ai/dto/generate-post.dto';
+
+export { GeneratedPostModel };
+
 @ObjectType()
 export class OrderModel {
   @Field(() => ID)
@@ -85,6 +89,9 @@ export class OrderModel {
 
   @Field(() => [GeneratedImageModel], { nullable: true })
   generatedImages?: GeneratedImageModel[];
+
+  @Field(() => [GeneratedPostModel], { nullable: true })
+  generatedPosts?: GeneratedPostModel[];
 
   @Field(() => InfluencerModel, { nullable: true })
   influencer?: InfluencerModel;

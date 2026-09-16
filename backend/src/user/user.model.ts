@@ -51,8 +51,6 @@ export class UserModel {
   @Field({ nullable: true })
   tone?: string;
 
-  // ADD THESE 👇
-
   @Field({ nullable: true })
   industry?: string;
 
@@ -64,8 +62,6 @@ export class UserModel {
 
   @Field(() => [String], { nullable: true })
   contentTypes?: string[];
-
-  // END
 
   @Field()
   requestedCustomInfluencer: boolean;

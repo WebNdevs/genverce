@@ -47,6 +47,21 @@ export const GET_MY_ORDERS = gql`
         delivered
         deliveredAt
       }
+      generatedPosts {
+        id
+        title
+        caption
+        content
+        hashtags
+        imageUrl
+        imagePrompt
+        platforms
+        topic
+        tone
+        callToAction
+        createdAt
+        delivered
+      }
       aiDisclosure
       videosOrdered
       videosDelivered
@@ -85,6 +100,21 @@ export const GET_ORDER = gql`
         delivered
         deliveredAt
       }
+      generatedPosts {
+        id
+        title
+        caption
+        content
+        hashtags
+        imageUrl
+        imagePrompt
+        platforms
+        topic
+        tone
+        callToAction
+        createdAt
+        delivered
+      }
       aiDisclosure
       reviewNotes
       reviewedBy
@@ -113,26 +143,34 @@ export const GET_ORDER = gql`
 `;
 
 export const GET_ALL_ORDERS = gql`
-  query GetAllOrders($status: OrderStatus) {
-    allOrders(status: $status) {
+  query GetAllOrders($status: OrderStatus, $influencerId: String) {
+    allOrders(status: $status, influencerId: $influencerId) {
       id
       customerId
       influencerId
       projectBrief
       package
+      deliveryType
       status
       price
       videoUrl
+      thumbnailUrl
+      videosOrdered
+      videosDelivered
+      deliveredAt
       createdAt
       influencer {
         id
         name
         avatar
+        serviceType
+        rating
       }
       customer {
         id
         name
         email
+        avatar
       }
     }
   }
@@ -161,6 +199,21 @@ export const GET_INFLUENCER_ORDERS = gql`
         createdAt
         delivered
         deliveredAt
+      }
+      generatedPosts {
+        id
+        title
+        caption
+        content
+        hashtags
+        imageUrl
+        imagePrompt
+        platforms
+        topic
+        tone
+        callToAction
+        createdAt
+        delivered
       }
       customer {
         id

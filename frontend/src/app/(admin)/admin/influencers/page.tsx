@@ -542,9 +542,9 @@ export default function AdminInfluencersPage() {
               <div>
                 <label className="block text-xs font-medium text-text-secondary mb-1">Chat Model</label>
                 <input value={aiConfig.chatModel ?? ''} onChange={(e) => setAiConfig(prev => ({ ...prev, chatModel: e.target.value }))}
-                  placeholder="gpt-4o-mini"
+                  placeholder="gpt-4o"
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors" />
-                <p className="text-[11px] text-text-secondary/60 mt-1">Model to use (e.g. gpt-4o-mini).</p>
+                <p className="text-[11px] text-text-secondary/60 mt-1">Model to use (e.g. gpt-4o).</p>
               </div>
             </div>
           </div>

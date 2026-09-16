@@ -103,7 +103,7 @@ export function FeaturedInfluencers() {
     <section className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="flex items-end justify-between mb-12"
@@ -129,7 +129,7 @@ export function FeaturedInfluencers() {
           {top.map((influencer, index) => (
             <motion.div
               key={influencer.id}
-              initial={{ opacity: 0, y: 30 }}
+              initial={false}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.1 }}
