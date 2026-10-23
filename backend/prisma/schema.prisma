@@ -91,6 +91,9 @@ model Influencer {
   orders            Order[]
   reviews           Review[]
 
+  @@index([isActive, rating])
+  @@index([rating])
+  @@index([deletedAt])
   @@map("influencers")
 }
 
@@ -184,6 +187,7 @@ model Message {
   chat      Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId], map: "messages_chatId_fkey")
+  @@index([chatId, createdAt])
   @@map("messages")
 }
 
@@ -282,6 +286,10 @@ model Order {
 
   @@index([customerId], map: "orders_customerId_fkey")
   @@index([influencerId], map: "orders_influencerId_fkey")
+  @@index([status])
+  @@index([createdAt])
+  @@index([customerId, status])
+  @@index([influencerId, status])
   @@map("orders")
 }
 
@@ -405,7 +413,7 @@ enum PaymentStatus {
 
 model StandaloneVideo {
   id           String   @id @default(uuid())
-  title        String?
+  title        String?  @db.VarChar(255)
   prompt       String   @db.Text
   videoUrl     String   @db.Text
   thumbnailUrl String?  @db.Text
@@ -418,6 +426,8 @@ model StandaloneVideo {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@index([status])
+  @@index([createdAt])
   @@map("standalone_videos")
 }
 

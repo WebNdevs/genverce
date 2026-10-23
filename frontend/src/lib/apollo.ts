@@ -64,10 +64,64 @@ const loadingLink = new ApolloLink((operation, forward) => {
 
 export const apolloClient = new ApolloClient({
   link: ApolloLink.from([loadingLink, errorLink, authLink.concat(httpLink)]),
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Query: {
+        fields: {
+          influencers: {
+            keyArgs: ['filter'],
+            merge(_, incoming) {
+              return incoming;
+            },
+          },
+          topInfluencers: {
+            merge(_, incoming) {
+              return incoming;
+            },
+          },
+          myOrders: {
+            merge(_, incoming) {
+              return incoming;
+            },
+          },
+          allOrders: {
+            keyArgs: ['status', 'influencerId'],
+            merge(_, incoming) {
+              return incoming;
+            },
+          },
+        },
+      },
+      Influencer: {
+        keyFields: ['id'],
+      },
+      Order: {
+        keyFields: ['id'],
+      },
+      Chat: {
+        keyFields: ['id'],
+      },
+      Message: {
+        keyFields: ['id'],
+      },
+      Notification: {
+        keyFields: ['id'],
+      },
+    },
+  }),
   defaultOptions: {
-    watchQuery: { fetchPolicy: 'cache-and-network', errorPolicy: 'all' },
-    query: { errorPolicy: 'all' },
-    mutate: { errorPolicy: 'all' },
+    watchQuery: {
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+      errorPolicy: 'all',
+    },
+    query: {
+      fetchPolicy: 'cache-first',
+      errorPolicy: 'all',
+    },
+    mutate: {
+      errorPolicy: 'all',
+    },
   },
 });
+

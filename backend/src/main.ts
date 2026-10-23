@@ -12,6 +12,7 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,
+    maxAge: 86400, // Cache preflight OPTIONS responses for 24 hours
   });
 
   app.useGlobalPipes(
@@ -21,7 +22,14 @@ async function bootstrap() {
     }),
   );
 
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+  app.use(
+    '/uploads',
+    express.static(join(process.cwd(), 'uploads'), {
+      maxAge: '7d',
+      etag: true,
+      immutable: true,
+    }),
+  );
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
