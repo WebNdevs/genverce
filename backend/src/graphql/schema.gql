@@ -80,8 +80,10 @@ input AdminUpdateOrderInput {
   id: String!
   package: String
   price: Float
-  projectBrief: ProjectBriefInput
+  projectBrief: JSONObject
   status: String
+  thumbnailUrl: String
+  videoUrl: String
 }
 
 input AdminUpdateUserInput {
@@ -365,8 +367,12 @@ type Mutation {
   activateInfluencer(id: String!): InfluencerModel!
   activateUser(userId: String!): UserModel!
   adminCreateOrder(input: AdminCreateOrderInput!): OrderModel!
+  adminDeleteStandaloneVideo(id: String!): Boolean!
+  adminGenerateOrderVideo(aspectRatio: String, duration: String, orderId: String!, prompt: String, videoModel: String, videoProvider: String): OrderModel!
+  adminGenerateStandaloneVideo(aspectRatio: String, duration: String, prompt: String!, title: String, videoModel: String, videoProvider: String): StandaloneVideo!
   adminHireAgentForUser(influencerId: String!, userId: String!): AdminHireAgentResult!
   adminSendMessage(chatId: String!, content: String!): MessageModel!
+  adminSendOrderVideoToClient(customMessage: String, notes: String, orderId: String!, videoUrl: String): OrderModel!
   adminUpdateOrder(input: AdminUpdateOrderInput!): OrderModel!
   adminUpdateUser(input: AdminUpdateUserInput!, userId: String!): UserModel!
   approveOrder(id: String!): OrderModel!
@@ -499,16 +505,18 @@ type PortfolioModel {
 
 input ProjectBriefInput {
   additionalNotes: String
-  inclusions: [String!]!
-  keyMessage: String!
+  inclusions: [String!]
+  keyMessage: String
   posterPlan: String
-  productName: String!
-  targetAudience: String!
-  tone: String!
+  productName: String
+  targetAudience: String
+  tone: String
+  videoPrompt: String
 }
 
 type Query {
   adminGetChat(chatId: String!): ChatModel!
+  adminGetStandaloneVideos(search: String, status: String): [StandaloneVideo!]!
   adminUserHiredAgents(userId: String!): [HiredAgentInfo!]!
   allChats: [ChatModel!]!
   allOrders(influencerId: String, status: String): [OrderModel!]!
@@ -574,10 +582,35 @@ input SignupInput {
 }
 
 type SiteSettings {
+  audioApiKey: String
+  audioApiUrl: String
+  audioModel: String
+  audioProvider: String
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
   chatProvider: String
+  customVideoEngines: String
+  videoApiKey: String
+  videoApiUrl: String
+  videoModel: String
+  videoProvider: String
+}
+
+type StandaloneVideo {
+  aspectRatio: String
+  createdAt: DateTime!
+  duration: String
+  id: ID!
+  metadata: JSONObject
+  model: String
+  prompt: String!
+  provider: String
+  status: String!
+  thumbnailUrl: String
+  title: String
+  updatedAt: DateTime!
+  videoUrl: String!
 }
 
 type TicketModel {
@@ -641,10 +674,19 @@ input UpdateInfluencerPackageInput {
 }
 
 input UpdateSiteSettingsInput {
+  audioApiKey: String
+  audioApiUrl: String
+  audioModel: String
+  audioProvider: String
   chatApiKey: String
   chatApiUrl: String
   chatModel: String
   chatProvider: String
+  customVideoEngines: String
+  videoApiKey: String
+  videoApiUrl: String
+  videoModel: String
+  videoProvider: String
 }
 
 input UpsertInfluencerPackageInput {

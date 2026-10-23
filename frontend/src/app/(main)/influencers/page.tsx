@@ -7,25 +7,63 @@ import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { InfluencerCard } from '@/components/influencer/influencer-card';
-import { GET_INFLUENCERS } from '@/graphql/queries/influencer';
+import { GET_INFLUENCERS, GET_FILTER_OPTIONS } from '@/graphql/queries/influencer';
 import { Influencer } from '@/types';
 import { useAuthStore } from '@/lib/auth';
 import AdminLayout from '@/app/(admin)/admin/layout';
 
 const FALLBACK_INFLUENCERS: Influencer[] = [
-  { id: '1', name: 'Nova Sterling', bio: 'AI-powered tech influencer specializing in SaaS, fintech, and developer tools. Sharp, data-driven content.', avatar: '', industries: ['Technology', 'SaaS', 'Fintech'], contentStyle: 'Professional & Data-Driven', languages: ['English', 'Spanish'], rating: 4.9, totalProjects: 347, totalReviews: 289, isActive: true, portfolio: [] },
-  { id: '2', name: 'Aria Bloom', bio: 'Lifestyle and beauty AI influencer with a warm, relatable personality for beauty brands and wellness products.', avatar: '', industries: ['Beauty', 'Lifestyle', 'Wellness'], contentStyle: 'Warm & Relatable', languages: ['English', 'French'], rating: 4.8, totalProjects: 512, totalReviews: 445, isActive: true, portfolio: [] },
-  { id: '3', name: 'Kai Vortex', bio: 'High-energy gaming and entertainment AI influencer for game launches, esports gear and entertainment.', avatar: '', industries: ['Gaming', 'Entertainment', 'Tech Gadgets'], contentStyle: 'High-Energy & Entertaining', languages: ['English', 'Japanese', 'Korean'], rating: 4.7, totalProjects: 623, totalReviews: 534, isActive: true, portfolio: [] },
-  { id: '4', name: 'Zara Nexus', bio: 'Fashion-forward AI influencer bridging haute couture with streetwear. Bold, editorial content.', avatar: '', industries: ['Fashion', 'Luxury', 'E-commerce'], contentStyle: 'Bold & Editorial', languages: ['English', 'Italian', 'Portuguese'], rating: 4.9, totalProjects: 298, totalReviews: 267, isActive: true, portfolio: [] },
-  { id: '5', name: 'Atlas Prime', bio: 'B2B and enterprise AI influencer focused on corporate messaging and professional services.', avatar: '', industries: ['B2B', 'Enterprise', 'Consulting'], contentStyle: 'Corporate & Authoritative', languages: ['English', 'German', 'Mandarin'], rating: 4.8, totalProjects: 189, totalReviews: 156, isActive: true, portfolio: [] },
-  { id: '6', name: 'Luna Spark', bio: 'Health and fitness AI influencer with energetic, motivational personality for fitness and nutrition brands.', avatar: '', industries: ['Fitness', 'Health', 'Nutrition'], contentStyle: 'Motivational & Energetic', languages: ['English', 'Spanish', 'Hindi'], rating: 4.7, totalProjects: 445, totalReviews: 398, isActive: true, portfolio: [] },
-  { id: '7', name: 'Rex Cipher', bio: 'Crypto and Web3 AI influencer making blockchain accessible. Covers DeFi, NFTs, and exchanges.', avatar: '', industries: ['Crypto', 'Web3', 'DeFi'], contentStyle: 'Technical & Conversational', languages: ['English', 'Russian', 'Arabic'], rating: 4.6, totalProjects: 334, totalReviews: 278, isActive: true, portfolio: [] },
-  { id: '8', name: 'Mira Sol', bio: 'Travel and hospitality AI influencer with cinematic flair for hotels, airlines and destination experiences.', avatar: '', industries: ['Travel', 'Hospitality', 'Food & Beverage'], contentStyle: 'Cinematic & Aspirational', languages: ['English', 'French', 'Thai'], rating: 4.9, totalProjects: 267, totalReviews: 234, isActive: true, portfolio: [] },
+  { id: '1', name: 'Nova Sterling', bio: 'AI-powered tech influencer specializing in SaaS, fintech, and developer tools. Sharp, data-driven content.', avatar: '/images/influencers/nova-sterling.jpg', industries: ['Technology', 'SaaS', 'Fintech'], contentStyle: 'Professional & Data-Driven', languages: ['English', 'Spanish'], rating: 4.9, totalProjects: 347, totalReviews: 289, isActive: true, portfolio: [] },
+  { id: '2', name: 'Aria Bloom', bio: 'Lifestyle and beauty AI influencer with a warm, relatable personality for beauty brands and wellness products.', avatar: '/images/influencers/aria-bloom.jpg', industries: ['Beauty', 'Lifestyle', 'Wellness'], contentStyle: 'Warm & Relatable', languages: ['English', 'French'], rating: 4.8, totalProjects: 512, totalReviews: 445, isActive: true, portfolio: [] },
+  { id: '3', name: 'Kai Vortex', bio: 'High-energy gaming and entertainment AI influencer for game launches, esports gear and entertainment.', avatar: '/images/influencers/kai-vortex.jpg', industries: ['Gaming', 'Entertainment', 'Tech Gadgets'], contentStyle: 'High-Energy & Entertaining', languages: ['English', 'Japanese', 'Korean'], rating: 4.7, totalProjects: 623, totalReviews: 534, isActive: true, portfolio: [] },
+  { id: '4', name: 'Zara Nexus', bio: 'Fashion-forward AI influencer bridging haute couture with streetwear. Bold, editorial content.', avatar: '/images/influencers/zara-nexus.jpg', industries: ['Fashion', 'Luxury', 'E-commerce'], contentStyle: 'Bold & Editorial', languages: ['English', 'Italian', 'Portuguese'], rating: 4.9, totalProjects: 298, totalReviews: 267, isActive: true, portfolio: [] },
+  { id: '5', name: 'Atlas Prime', bio: 'B2B and enterprise AI influencer focused on corporate messaging and professional services.', avatar: '/images/influencers/atlas-prime.jpg', industries: ['B2B', 'Enterprise', 'Consulting'], contentStyle: 'Corporate & Authoritative', languages: ['English', 'German', 'Mandarin'], rating: 4.8, totalProjects: 189, totalReviews: 156, isActive: true, portfolio: [] },
+  { id: '6', name: 'Austin Vance', bio: 'High-end real estate authority and investment strategist. Luxury market breakdowns and investor models.', avatar: '/images/influencers/austin-vance.jpg', industries: ['Real Estate', 'Luxury Properties', 'Property Investment'], contentStyle: 'Analytical & Luxury-Focused', languages: ['English', 'Spanish'], rating: 4.9, totalProjects: 318, totalReviews: 274, isActive: true, portfolio: [] },
+  { id: '7', name: 'Marcus Iron', bio: 'Elite strength and conditioning specialist with high-intensity training programs and athletic motivation.', avatar: '/images/influencers/marcus-iron.jpg', industries: ['Fitness', 'Strength Training', 'Sports Performance'], contentStyle: 'High-Intensity & Inspiring', languages: ['English', 'German'], rating: 4.8, totalProjects: 485, totalReviews: 412, isActive: true, portfolio: [] },
+  { id: '8', name: 'Dr. Chloe Sterling', bio: 'Functional nutritionist and food biochemist decoding gut health, whole-food recipes, and wellness.', avatar: '/images/influencers/chloe-sterling.jpg', industries: ['Nutrition', 'Holistic Health', 'Wellness'], contentStyle: 'Evidence-Based & Holistic', languages: ['English', 'French'], rating: 4.9, totalProjects: 392, totalReviews: 341, isActive: true, portfolio: [] },
 ];
 
-const ALL_INDUSTRIES = ['Technology', 'SaaS', 'Fintech', 'Beauty', 'Lifestyle', 'Wellness', 'Gaming', 'Entertainment', 'Tech Gadgets', 'Fashion', 'Luxury', 'E-commerce', 'B2B', 'Enterprise', 'Consulting', 'Fitness', 'Health', 'Nutrition', 'Crypto', 'Web3', 'DeFi', 'Travel', 'Hospitality', 'Food & Beverage'];
-const ALL_STYLES = ['Professional & Data-Driven', 'Warm & Relatable', 'High-Energy & Entertaining', 'Bold & Editorial', 'Corporate & Authoritative', 'Motivational & Energetic', 'Technical & Conversational', 'Cinematic & Aspirational'];
-const ALL_LANGUAGES = ['English', 'Spanish', 'French', 'Italian', 'Portuguese', 'German', 'Mandarin', 'Japanese', 'Korean', 'Russian', 'Arabic', 'Hindi', 'Thai'];
+const ALL_INDUSTRIES = [
+  'Academic Tutoring', 'Adventure Tourism', 'Amazon FBA', 'Architecture', 'Artificial Intelligence',
+  'Audio Engineering', 'Audio Production', 'Automotive', 'B2B', 'Beauty', 'Brand Strategy',
+  'Broadcast Journalism', 'Career Development', 'Child Development', 'Cinematography', 'Clean Beauty',
+  'Cloud Security', 'Company Culture', 'Consulting', 'Content Strategy', 'Cryptocurrency', 'Culinary Arts',
+  'Current Affairs', 'Cybersecurity', 'DeFi Protocols', 'Digital Entertainment', 'Digital Marketing',
+  'Digital Strategy', 'DTC Brands', 'E-commerce', 'Editorial Styling', 'Education', 'Electric Vehicles',
+  'Entertainment', 'Enterprise', 'Esports', 'Event Design', 'Executive Presence', 'Family Lifestyle',
+  'Fashion', 'Finance', 'Fintech', 'Fitness', 'Food & Beverage', 'Full-Stack Development', 'Gaming',
+  'Gastronomy', 'Geopolitics', 'Growth Marketing', 'Health', 'High Fashion', 'Holistic Health',
+  'Home Decor', 'Hospitality', 'Human Resources', 'Interior Design', 'Interviews', 'Leadership',
+  'Lifestyle', 'LinkedIn Growth', 'Live Streaming', 'LLM Applications', 'Luxury', 'Luxury Lifestyle',
+  'Luxury Properties', 'Marketing', 'Mindset Coaching', 'Music Production', 'Nutrition', 'Parenting',
+  'Personal Branding', 'Personal Growth', 'Photography', 'Podcasting', 'Productivity', 'Professional Coaching',
+  'Property Investment', 'Real Estate', 'SaaS', 'SaaS Scaling', 'Search Engine Optimization', 'Software Engineering',
+  'Sound Design', 'Sports Performance', 'Startups', 'STEM Learning', 'Stock Market', 'Strength Training',
+  'Supercars', 'Talent Acquisition', 'Technology', 'Tech Gadgets', 'Travel', 'Venture Capital',
+  'Video Production', 'Visual Arts', 'Web3 Gaming', 'Weddings', 'Wealth Management', 'Wellness',
+  'Workflow Automation', 'YouTube Strategy', 'Zero Trust'
+].sort();
+
+const ALL_STYLES = [
+  'Algorithmic & Authority-Building', 'Analytical & Luxury-Focused', 'Analytical & On-Chain Focused',
+  'Bold & Editorial', 'Cinematic & Aspirational', 'Cinematic & High-Retention', 'Clean-Code & Architecture-Driven',
+  'Compassionate & Practical', 'Corporate & Authoritative', 'Editorial & Chic-Trendsetting',
+  'Electrifying & Gamer-Centric', 'Empowering & Pragmatic', 'Evidence-Based & Holistic',
+  'Executive & Polished', 'Futuristic & Workflow-Optimized', 'Growth-Focused & Metric-Driven',
+  'Harmonic & Sonic-Immersive', 'High-Energy & Entertaining', 'High-Intensity & Inspiring',
+  'High-Octane & Technical Performance', 'Immersive & Wanderlust-Inducing', 'Innovative & High-Impact',
+  'Insightful & People-First', 'Intimate & Thought-Provoking', 'Minimalist & Spatial-Aesthetic',
+  'Motivational & Energetic', 'Objective & Incisive Broadcast', 'Pedagogical & Concept-Unlocking',
+  'Pragmatic & Pitch-Ready', 'Professional & Data-Driven', 'Romantic & Timeless Elegance',
+  'Sensory & Epicurean', 'Strategic & Wealth-Building', 'Tactical & Threat-Informed',
+  'Technical & Conversational', 'Transformational & High-Energy', 'Visual-First & Masterclass Technical',
+  'Warm & Relatable'
+].sort();
+
+const ALL_LANGUAGES = [
+  'Arabic', 'Danish', 'English', 'French', 'German', 'Greek', 'Hindi', 'Irish', 'Italian',
+  'Japanese', 'Korean', 'Mandarin', 'Portuguese', 'Russian', 'Spanish', 'Swedish', 'Thai', 'Yoruba'
+].sort();
 
 export default function InfluencersPage() {
   const { user } = useAuthStore();
@@ -38,6 +76,17 @@ export default function InfluencersPage() {
   const [minRating, setMinRating] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
+
+  const { data: filterOptionsData } = useQuery(GET_FILTER_OPTIONS);
+  const filterIndustries = filterOptionsData?.influencerFilterOptions?.industries?.length
+    ? filterOptionsData.influencerFilterOptions.industries
+    : ALL_INDUSTRIES;
+  const filterStyles = filterOptionsData?.influencerFilterOptions?.contentStyles?.length
+    ? filterOptionsData.influencerFilterOptions.contentStyles
+    : ALL_STYLES;
+  const filterLanguages = filterOptionsData?.influencerFilterOptions?.languages?.length
+    ? filterOptionsData.influencerFilterOptions.languages
+    : ALL_LANGUAGES;
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -184,21 +233,21 @@ export default function InfluencersPage() {
                   <label className="block text-xs font-medium text-text-secondary mb-2">Industry</label>
                   <select value={industry} onChange={(e) => { setIndustry(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors">
                     <option value="">All Industries</option>
-                    {ALL_INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+                    {filterIndustries.map((i: string) => <option key={i} value={i}>{i}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-text-secondary mb-2">Content Style</label>
                   <select value={contentStyle} onChange={(e) => { setContentStyle(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors">
                     <option value="">All Styles</option>
-                    {ALL_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {filterStyles.map((s: string) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-text-secondary mb-2">Language</label>
                   <select value={language} onChange={(e) => { setLanguage(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors">
                     <option value="">All Languages</option>
-                    {ALL_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                    {filterLanguages.map((l: string) => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
                 <div>
@@ -325,7 +374,7 @@ export default function InfluencersPage() {
                     className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
                   >
                     <option value="">All Industries</option>
-                    {ALL_INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+                    {filterIndustries.map((i: string) => <option key={i} value={i}>{i}</option>)}
                   </select>
                 </div>
                 <div>
@@ -336,7 +385,7 @@ export default function InfluencersPage() {
                     className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
                   >
                     <option value="">All Styles</option>
-                    {ALL_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {filterStyles.map((s: string) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
@@ -347,7 +396,7 @@ export default function InfluencersPage() {
                     className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
                   >
                     <option value="">All Languages</option>
-                    {ALL_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                    {filterLanguages.map((l: string) => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
                 <div>

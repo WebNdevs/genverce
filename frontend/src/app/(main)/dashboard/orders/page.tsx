@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Download, Ticket, Star, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
+import { Download, Ticket, Star, CheckCircle, XCircle, Clock, Loader, Film, ArrowRight } from 'lucide-react';
 import { GET_MY_ORDERS } from '@/graphql/queries/order';
 import { CREATE_REVIEW } from '@/graphql/mutations/ticket';
 import { useAuthStore } from '@/lib/auth';
@@ -84,17 +84,32 @@ function OrdersPage() {
                   <motion.div key={order.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                     className="glass-card p-5">
                     <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 rounded-full bg-surface border border-brand/30 flex items-center justify-center text-xl font-bold gradient-text flex-shrink-0">
-                        {order.influencer?.name?.charAt(0) ?? '?'}
-                      </div>
+                      <Link
+                        href={`/dashboard/orders/influencer/${order.influencer?.id ?? order.influencerId}`}
+                        className="group/avatar relative block flex-shrink-0"
+                        title={`View ${order.influencer?.name || 'Influencer'}'s tasks and videos`}
+                      >
+                        {order.influencer?.avatar ? (
+                          <img
+                            src={order.influencer.avatar}
+                            alt={order.influencer.name || 'Influencer'}
+                            className="w-14 h-14 rounded-full object-cover border-2 border-brand/40 group-hover/avatar:border-brand transition-all shadow-md"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 via-brand to-pink-500 text-white flex items-center justify-center text-xl font-bold border-2 border-brand/40 group-hover/avatar:border-brand transition-all shadow-md select-none">
+                            {order.influencer?.name?.charAt(0) ?? 'AI'}
+                          </div>
+                        )}
+                      </Link>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <Link
                               href={`/dashboard/orders/influencer/${order.influencer?.id ?? order.influencerId}`}
-                              className="font-semibold hover:text-brand-light transition-colors"
+                              className="font-bold text-base hover:text-brand-light transition-colors inline-flex items-center gap-1.5 group/name"
                             >
-                              {order.influencer?.name}
+                              <span>{order.influencer?.name || 'Influencer'}</span>
+                              <ArrowRight size={13} className="text-brand-light opacity-0 -translate-x-1 group-hover/name:opacity-100 group-hover/name:translate-x-0 transition-all" />
                             </Link>
                             <p className="text-sm text-text-secondary">{order.package?.replace(/_/g, ' ')} · ${order.price}</p>
                             <p className="text-xs text-text-secondary mt-0.5">{fmtDate(order.createdAt)}</p>
@@ -130,9 +145,9 @@ function OrdersPage() {
                         <div className="flex flex-wrap items-center gap-2 mt-3">
                           <Link
                             href={`/dashboard/orders/influencer/${order.influencer?.id ?? order.influencerId}`}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border text-text-secondary rounded-lg text-xs font-medium hover:text-text-primary transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand/10 border border-brand/30 text-brand-light rounded-lg text-xs font-semibold hover:bg-brand/20 transition-colors shadow-xs"
                           >
-                            View All Projects
+                            <Film size={13} /> View Influencer Tasks & Videos
                           </Link>
                           {order.videoUrl && order.status === 'DELIVERED' && (
                             <a href={order.videoUrl} download

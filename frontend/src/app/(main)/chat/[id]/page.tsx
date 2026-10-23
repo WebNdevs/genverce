@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Briefcase, Search, ChevronRight, Menu, X,
   ChevronUp, ChevronDown, Paperclip, FileText, CornerUpLeft, CheckCircle,
-  AlertCircle, Plus,
+  AlertCircle, Plus, Download, Copy, Check, Video, Share2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ImageBubble } from '@/components/ui/image-bubble';
@@ -115,6 +115,58 @@ function shouldShowImageText(text: string) {
   return true;
 }
 
+interface DeliverableInfo {
+  isDeliverable: boolean;
+  type: 'script' | 'story' | 'post' | 'content';
+  label: string;
+  title: string;
+}
+
+function detectDeliverable(content: string): DeliverableInfo | null {
+  if (!content || content.length < 100) return null;
+  const clean = content.replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '').trim();
+
+  // Social Media Post (e.g. strict POST format or Title/Description/Hashtags structure)
+  if (/^POST\b/i.test(clean) || (clean.includes('Title:') && clean.includes('Description:') && clean.includes('Hashtags:'))) {
+    const titleMatch = clean.match(/Title:\s*([^\n]+)/i);
+    const title = titleMatch ? titleMatch[1].replace(/[*_#]/g, '').trim() : 'Social Media Post';
+    return { isDeliverable: true, type: 'post', label: 'Social Post', title };
+  }
+
+  // Video Script / Screenplay / Scene breakdown
+  const hasScriptKeywords =
+    /(\[Scene\b|Scene\s+\d+|INT\.|EXT\.|\[Visual:?|Visual:?|\[Audio:?|Voiceover:?|Hook:?|Call to Action:?|CTA:?|Host:?|Narrator:?|Timestamps?:?)/i.test(clean);
+  const mentionsScript = /\b(video\s*script|reel\s*script|tiktok\s*script|youtube\s*script|screenplay|storyboard)\b/i.test(clean);
+  if ((hasScriptKeywords && clean.length > 200) || (mentionsScript && clean.length > 180)) {
+    const titleMatch =
+      clean.match(/^(?:Title|Script|Video Script):\s*([^\n]+)/im) ||
+      clean.match(/^#+\s*([^\n]+)/m) ||
+      clean.match(/\b(?:Script for|Video:)\s*([^\n]+)/i);
+    const title = titleMatch ? titleMatch[1].replace(/[*_#]/g, '').trim() : 'Video Script';
+    return { isDeliverable: true, type: 'script', label: 'Script', title };
+  }
+
+  // Story / Narrative / Long-form creative writing
+  const hasStoryKeywords = /\b(story|narrative|chapter\s+\d+|once\s+upon|the\s+story\s+of|the\s+journey\s+of|tale\s+of)\b/i.test(clean);
+  const paragraphCount = clean.split(/\n\s*\n/).length;
+  if ((hasStoryKeywords && clean.length > 220) || (clean.length > 400 && paragraphCount >= 3 && !clean.includes('http://') && !clean.includes('https://'))) {
+    const titleMatch =
+      clean.match(/^(?:Title|Story):\s*([^\n]+)/im) ||
+      clean.match(/^#+\s*([^\n]+)/m);
+    const title = titleMatch ? titleMatch[1].replace(/[*_#]/g, '').trim() : 'Story / Narrative';
+    return { isDeliverable: true, type: 'story', label: 'Story', title };
+  }
+
+  // Other long-form content (articles, newsletters, guides, strategies >= 350 chars)
+  if (clean.length >= 350) {
+    const titleMatch = clean.match(/^#+\s*([^\n]+)/m) || clean.match(/^(?:Topic|Subject|Title):\s*([^\n]+)/im);
+    const title = titleMatch ? titleMatch[1].replace(/[*_#]/g, '').trim() : 'Generated Content';
+    return { isDeliverable: true, type: 'content', label: 'Content', title };
+  }
+
+  return null;
+}
+
 /* ── main component ──────────────────────────────────────── */
 export default function ChatPage() {
   const params = useParams();
@@ -151,6 +203,7 @@ export default function ChatPage() {
   const [pendingUpload, setPendingUpload] = useState<null | { url: string; name: string; mimeType: string; isImage: boolean }>(null);
   const [replyingTo, setReplyingTo] = useState<ReplyTarget | null>(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,6 +211,84 @@ export default function ChatPage() {
   const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // Keep chatId in a ref so reconnect handler always has the latest value
   const chatIdRef = useRef<string | null>(null);
+
+  const handleCopyContent = async (msg: Message) => {
+    try {
+      const clean = (msg.content || '')
+        .replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '')
+        .replace(/\[Image generated:[^\]]+\]/gi, '')
+        .replace(/http:\/\/localhost:\d+\/uploads\/[^\s\n]+/gi, '')
+        .replace(/http:\/\/127\.0\.0\.1:\d+\/uploads\/[^\s\n]+/gi, '')
+        .trim();
+      await navigator.clipboard.writeText(clean);
+      setCopiedMsgId(msg.id);
+      toast({ title: 'Copied to clipboard!', variant: 'success' });
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch {
+      toast({ title: 'Failed to copy to clipboard.', variant: 'error' });
+    }
+  };
+
+  const handleDownloadContent = (msg: Message, customTitle?: string) => {
+    try {
+      const clean = (msg.content || '')
+        .replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '')
+        .replace(/\[Image generated:[^\]]+\]/gi, '')
+        .replace(/http:\/\/localhost:\d+\/uploads\/[^\s\n]+/gi, '')
+        .replace(/http:\/\/127\.0\.0\.1:\d+\/uploads\/[^\s\n]+/gi, '')
+        .trim();
+
+      if (!clean) {
+        toast({ title: 'No content available to download.', variant: 'error' });
+        return;
+      }
+
+      const deliverable = detectDeliverable(clean);
+      const typeLabel = deliverable?.label || 'Generated Content';
+      const postTitle = customTitle || deliverable?.title || `${influencerName} ${typeLabel}`;
+
+      const timestamp = new Date(msg.createdAt).toLocaleString();
+      const divider = '='.repeat(60);
+      const fileHeader = [
+        divider,
+        `GENVERCE AI - ${typeLabel.toUpperCase()}`,
+        divider,
+        `Creator: ${influencerName}`,
+        `Date: ${timestamp}`,
+        `Title: ${postTitle}`,
+        divider,
+        '',
+        '',
+      ].join('\n');
+
+      const fileContent = fileHeader + clean;
+      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      const safeTitle = postTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 40);
+      const safeInfluencer = (influencerName || 'influencer')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .slice(0, 20);
+
+      a.download = `${safeInfluencer}_${safeTitle || 'content'}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({ title: `Downloaded ${typeLabel} successfully!`, variant: 'success' });
+    } catch (err) {
+      console.error('Download error:', err);
+      toast({ title: 'Failed to download content.', variant: 'error' });
+    }
+  };
 
   const { data: influencerData } = useQuery(GET_INFLUENCER, {
     variables: { id: influencerId },
@@ -831,6 +962,8 @@ export default function ChatPage() {
                 const isActiveMatch = isMatch && matchedIds[clampedIndex] === msg.id;
                 const isHighlighted = highlightedMsgId === msg.id;
                 const { reply, body } = parseReplyMessage(msg.content);
+                const deliverable = !isUser ? detectDeliverable(body) : null;
+                const bubbleMaxWidth = deliverable ? 'max-w-[85%] sm:max-w-[80%]' : 'max-w-[70%] sm:max-w-[65%]';
 
                 return (
                   <motion.div
@@ -844,7 +977,7 @@ export default function ChatPage() {
                     {!isUser && (
                       <Avatar name={influencerName} src={influencer?.avatar} size={7} />
                     )}
-                    <div className={`group max-w-[65%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div className={`group ${bubbleMaxWidth} flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                       {!isUser && (
                         <span className="text-[11px] text-text-secondary/60 mb-1 ml-1">{influencerName}</span>
                       )}
@@ -862,6 +995,50 @@ export default function ChatPage() {
                             onScrollToMessage={scrollToMessage}
                           />
                         )}
+
+                        {/* Deliverable Header (Story, Script, Post, Long-form) with Download & Copy */}
+                        {!isUser && deliverable && (
+                          <div className="flex items-center justify-between gap-2 pb-2 mb-2.5 border-b border-border/70">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand/10 text-brand border border-brand/20">
+                                {deliverable.type === 'script' ? (
+                                  <Video size={11} className="flex-shrink-0" />
+                                ) : deliverable.type === 'post' ? (
+                                  <Share2 size={11} className="flex-shrink-0" />
+                                ) : (
+                                  <FileText size={11} className="flex-shrink-0" />
+                                )}
+                                <span>{deliverable.label}</span>
+                              </span>
+                              {deliverable.title && (
+                                <span className="text-[11px] text-text-secondary truncate font-medium max-w-[180px]">
+                                  {deliverable.title}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyContent(msg)}
+                                className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface hover:bg-surface-elevated border border-border/80 text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                                title="Copy content"
+                              >
+                                {copiedMsgId === msg.id ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                <span>{copiedMsgId === msg.id ? 'Copied' : 'Copy'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadContent(msg)}
+                                className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-brand text-white hover:bg-brand-hover transition-colors flex items-center gap-1 shadow-xs"
+                                title="Download generated content as text file"
+                              >
+                                <Download size={11} />
+                                <span>Download</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {msg.imageUrl ? (
                           <div className="flex flex-col gap-2">
                             {shouldShowImageText(body) ? (
@@ -895,6 +1072,28 @@ export default function ChatPage() {
                           <CornerUpLeft size={12} />
                           <span className="text-[10px]">Reply</span>
                         </button>
+                        {!isUser && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyContent(msg)}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all px-1.5 py-0.5 rounded hover:bg-surface border border-transparent hover:border-border text-text-secondary/70 hover:text-text-primary flex items-center gap-1 text-[11px]"
+                              title="Copy text"
+                            >
+                              {copiedMsgId === msg.id ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                              <span className="text-[10px]">{copiedMsgId === msg.id ? 'Copied' : 'Copy'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadContent(msg)}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all px-1.5 py-0.5 rounded hover:bg-surface border border-transparent hover:border-border text-text-secondary/70 hover:text-text-primary flex items-center gap-1 text-[11px]"
+                              title="Download message content"
+                            >
+                              <Download size={11} />
+                              <span className="text-[10px]">Download</span>
+                            </button>
+                          </>
+                        )}
                         <span className="text-[10px] text-text-secondary/50 opacity-0 group-hover:opacity-100 transition-opacity">
                           {fmtTime(msg.createdAt)}
                         </span>

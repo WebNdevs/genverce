@@ -15,6 +15,8 @@ import { NotificationService } from '../notification/notification.service';
 import { AiService } from '../ai/ai.service';
 import { FaqService } from '../faq/faq.service';
 import { join } from 'path';
+import { OrderStatus } from '@prisma/client';
+import { PrismaService } from '../config/prisma.service';
 
 interface SendMessagePayload {
   chatId: string;
@@ -51,6 +53,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private faqService: FaqService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private prisma: PrismaService,
   ) { }
 
   private async getUserIdFromSocket(client: Socket): Promise<string> {
@@ -448,22 +451,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return 'image';
     }
 
+    // VIDEO REQUESTS - Prioritized before generic post
+    if (
+      /\b(video|videos|reel|reels|shorts?|ugc|youtube video|video script|ad script|commercial|clip|clips|teaser)\b/i.test(text)
+    ) {
+      return 'video';
+    }
+
     // CONTENT WRITING / POST REQUESTS
     // If the user requests a post, blog, article, caption, newsletter, even with an image (e.g. "create a post with an image")
     const hasPostKeywords =
       (/\b(caption|blog|article|newsletter|linkedin post|social post)\b/.test(text) ||
        /\b(post|posts)\b/.test(text)) &&
-      !/\b(poster|flyer)\b/.test(text);
+      !/\b(poster|flyer|video|reel)\b/i.test(text);
 
     if (hasPostKeywords) {
       return 'post';
-    }
-
-    // VIDEO REQUESTS
-    if (
-      /\b(video|reel|shorts|ugc|youtube video|video script|ad script)\b/.test(text)
-    ) {
-      return 'video';
     }
 
     // IMAGE REQUESTS
@@ -514,22 +517,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private isVideoRequest(content: string): boolean {
+    if (!content) return false;
     const lower = content.toLowerCase();
-    return (
-      lower.includes('video') ||
-      lower.includes('reel') ||
-      lower.includes('tiktok') ||
-      lower.includes('youtube') ||
-      lower.includes('shorts') ||
-      lower.includes('ugc') ||
-      lower.includes('video script') ||
-      lower.includes('ad script')
-    );
+    if (
+      /\b(video|videos|reel|reels|tiktok|tiktoks|shorts?|ugc|clip|clips|teaser|commercial|film|footage)\b/i.test(lower)
+    ) {
+      return true;
+    }
+    if (
+      /\b(make|create|generate|shoot|film|record|produce|do|need|want|script|write|revise|change|update|tweak)\b.*\b(video|clip|reel|short|commercial|teaser|storyboard|ad\s+clip|prompt)\b/i.test(lower) ||
+      /\b(video|reel|clip|commercial)\s+(script|ad|prompt|concept|treatment|storyboard|production|draft)\b/i.test(lower) ||
+      /\b(video\s+script|video\s+prompt|script\s+for\s+(?:the\s+)?video|prompt\s+for\s+(?:the\s+)?video)\b/i.test(lower)
+    ) {
+      return true;
+    }
+    return false;
   }
 
   private isPostRequest(content: string): boolean {
     const lower = content.toLowerCase();
-    if (/\bposter\b/.test(lower)) return false;
+    if (/\b(poster|flyer|video|reel)\b/i.test(lower)) return false;
     return (
       /\bblog\b/.test(lower) ||
       /\barticle\b/.test(lower) ||
@@ -833,6 +840,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private extractPostFromContent(content: string, imageUrl?: string, defaultTopic?: string): any | null {
     if (!content || typeof content !== 'string') return null;
     const text = content.trim();
+
+    // If the content is a video request confirmation, video script, or video prompt, it is NOT a social post deliverable
+    if (
+      /\b(video script|storyboard|video prompt|video request|production specifications)\b/i.test(text) ||
+      text.includes('🎬') ||
+      text.includes('Generated Video Script') ||
+      text.includes('Suggested Video Script')
+    ) {
+      return null;
+    }
 
     const cleanStr = (s?: string | null) => (s ? s.replace(/^[*_~`\s]+|[*_~`\s]+$/g, '').trim() : '');
 
@@ -1726,10 +1743,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const incoming = (data.content ?? '').trim();
       const meta = await this.chatService.getChatMeta(data.chatId);
-      const socketUserId = (client.data as any)?.userId;
+      const socketUserId = (client.data as any)?.userId || (await this.getUserIdFromSocket(client));
       const payloadUserId = (data as any)?.userId;
-      const resolvedCustomerId = meta?.customerId || payloadUserId || socketUserId;
-      const influencerId = data.influencerId || meta?.influencerId;
+      let resolvedCustomerId = meta?.customerId || payloadUserId || socketUserId;
+      let influencerId = data.influencerId || meta?.influencerId;
+
+      if (!resolvedCustomerId || !influencerId) {
+        const chatRow = await this.prisma.chat.findUnique({
+          where: { id: data.chatId },
+          select: { customerId: true, influencerId: true },
+        });
+        if (chatRow) {
+          if (!resolvedCustomerId) resolvedCustomerId = chatRow.customerId;
+          if (!influencerId) influencerId = chatRow.influencerId;
+        }
+      }
+
+      if (!resolvedCustomerId) {
+        const fallbackCust = await this.prisma.user.findFirst({
+          where: { role: 'CUSTOMER' },
+          select: { id: true },
+        });
+        if (fallbackCust) resolvedCustomerId = fallbackCust.id;
+      }
+
+      if (!influencerId) {
+        const fallbackInf = await this.prisma.influencer.findFirst({
+          where: { isActive: true },
+          select: { id: true },
+        });
+        if (fallbackInf) influencerId = fallbackInf.id;
+      }
 
       let usageInfo = {
         isHired: false,
@@ -1808,8 +1852,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       // Load influencer AI context (persona, topic, service type, image config)
-      const { name, industries, contentStyle, locationCity, locationState, locationCountry, locationAddress, locationPincode, systemPrompt, topic, outOfTopicMessage, serviceType, aiConfig } =
-        await this.chatService.getInfluencerAIContext(data.influencerId);
+      const { name, bio, industries, contentStyle, voiceId, locationCity, locationState, locationCountry, locationAddress, locationPincode, systemPrompt, topic, outOfTopicMessage, serviceType, aiConfig } =
+        await this.chatService.getInfluencerAIContext(influencerId || '');
 
       const hasIncomingImage = !!data.imageUrl;
       const intent = this.detectIntent(incoming);
@@ -1818,9 +1862,198 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         intent === 'image' ||
         (hasIncomingImage && intent !== 'post');
 
-      const wantsVideo = intent === 'video';
+      const wantsVideo = intent === 'video' || this.isVideoRequest(incoming);
       const wantsPost = intent === 'post';
       const wantsPoster = this.isPosterRequest(incoming);
+
+      // Handle video request naturally from chat: capture complete conversation context,
+      // extract or generate the influencer's script, generate the production prompt, and register the Video Request!
+      if (wantsVideo) {
+        const finalCustomerId = resolvedCustomerId;
+        const finalInfluencerId = influencerId;
+        const details = await this.chatService.getChatMemoryDetails(data.chatId);
+        const rawHistory = await this.chatService.getRecentMessages(data.chatId);
+
+        // Format and capture the entire conversation context
+        const conversationContext: Array<{
+          id?: string;
+          role: string;
+          senderName?: string;
+          content: string;
+          createdAt?: string;
+        }> = rawHistory.map((m) => ({
+          id: m.id,
+          role: m.role,
+          senderName: m.role === 'ASSISTANT' ? name : 'Customer',
+          content: m.content,
+          createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+        }));
+        if (!conversationContext.some((c) => c.content === incoming)) {
+          conversationContext.push({
+            role: 'USER',
+            senderName: 'Customer',
+            content: incoming,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        // Check if influencer had already suggested or provided a script in recent assistant messages:
+        const priorScriptMsg = [...rawHistory].reverse().find(
+          (m) =>
+            m.role === 'ASSISTANT' &&
+            (/\b(script|storyboard|scene\s*1|dialogue|hook:|visual:)\b/i.test(m.content) ||
+              m.content.includes('**Generated Video Script & Storyboard:**') ||
+              m.content.includes('**Suggested Video Script & Storyboard:**'))
+        );
+        let priorScript = '';
+        if (priorScriptMsg) {
+          const scriptMatch = priorScriptMsg.content.match(
+            /\*\*(?:Generated|Suggested) Video Script & Storyboard:\*\*\s*\n+([\s\S]*?)(?=\n\n(?:The administrators|\*\*Production|You haven’t|The available|$))/i
+          );
+          if (scriptMatch?.[1]) {
+            priorScript = scriptMatch[1].trim();
+          } else {
+            priorScript = priorScriptMsg.content.trim();
+          }
+        }
+
+        // Generate complete, ready-to-use production prompt & script
+        const promptResult = await this.aiService.generateDetailedVideoPrompt({
+          influencer: {
+            id: finalInfluencerId,
+            name,
+            bio,
+            industries,
+            contentStyle,
+            voiceId,
+            systemPrompt,
+            serviceType,
+            aiConfig,
+          },
+          userMessage: incoming,
+          chatHistory: rawHistory.map((m) => ({
+            role: m.role.toLowerCase() as any,
+            content: m.content,
+          })),
+          memoryDetails: details as any,
+          customChat: {
+            chatProvider: aiConfig?.chatProvider,
+            chatApiUrl: aiConfig?.chatApiUrl,
+            chatApiKey: aiConfig?.chatApiKey,
+            chatModel: aiConfig?.chatModel,
+          },
+          customVideo: (aiConfig as any)?.videoProvider
+            ? {
+                videoProvider: (aiConfig as any)?.videoProvider,
+                videoApiUrl: (aiConfig as any)?.videoApiUrl,
+                videoApiKey: (aiConfig as any)?.videoApiKey,
+                videoModel: (aiConfig as any)?.videoModel,
+              }
+            : undefined,
+        });
+
+        const effectiveScript = priorScript || promptResult.script || '';
+
+        let targetStatus: OrderStatus = OrderStatus.PENDING_REVIEW;
+        if (!isHired || !hasRemainingUsage) {
+          targetStatus = OrderStatus.PENDING_PAYMENT;
+        }
+
+        let syncResult: any = null;
+        if (finalCustomerId && finalInfluencerId) {
+          syncResult = await this.chatService.createOrUpdateVideoRequest({
+            customerId: finalCustomerId,
+            influencerId: finalInfluencerId,
+            chatId: data.chatId,
+            videoPromptResult: {
+              ...promptResult,
+              script: effectiveScript,
+            },
+            userMessage: incoming,
+            influencerScript: effectiveScript,
+            conversationContext,
+            initialStatus: targetStatus,
+            isRevision: false,
+          });
+
+          if (syncResult?.orderId) {
+            this.server.emit('videoRequestCreated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustomerId,
+              influencerId: finalInfluencerId,
+              status: targetStatus,
+            });
+            this.server.emit('orderUpdated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustomerId,
+              influencerId: finalInfluencerId,
+              status: targetStatus,
+            });
+            this.server.to(data.chatId).emit('videoRequestCreated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustomerId,
+              influencerId: finalInfluencerId,
+              status: targetStatus,
+            });
+          }
+        }
+
+        const displayOrderId = syncResult?.orderId
+          ? `#${syncResult.orderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`
+          : '';
+
+        let replyText = '';
+        if (!isHired) {
+          replyText =
+            `🎬 **Video Request Captured & Registered!**\n\n` +
+            `I've captured your video request, prepared a complete production script and prompt for your project, and registered the Video Request${displayOrderId ? ` (Order ${displayOrderId})` : ''}.\n\n` +
+            `**Production Specifications:**\n` +
+            `- **Project:** ${promptResult.title}\n` +
+            `- **Duration:** ${promptResult.duration}\n` +
+            `- **Aspect Ratio:** ${promptResult.aspectRatio}\n` +
+            `- **Language:** ${promptResult.language}\n` +
+            `- **Mood:** ${promptResult.mood}\n\n` +
+            `**Suggested Video Script & Storyboard:**\n\n${effectiveScript}\n\n` +
+            `You haven’t hired me for this project yet. Please hire me first before we produce and deliver this video. Click the **Hire** button above or choose a package on my profile, and once hired, our team and AI engine will proceed with video generation immediately!`;
+        } else if (!hasRemainingUsage) {
+          replyText =
+            `🎬 **Video Request Captured & Registered!**\n\n` +
+            `I've organized your request into a complete production prompt and registered your Video Request${displayOrderId ? ` (Order ${displayOrderId})` : ''}.\n\n` +
+            `**Production Specifications:**\n` +
+            `- **Project:** ${promptResult.title}\n` +
+            `- **Duration:** ${promptResult.duration}\n` +
+            `- **Aspect Ratio:** ${promptResult.aspectRatio}\n` +
+            `- **Language:** ${promptResult.language}\n` +
+            `- **Mood:** ${promptResult.mood}\n\n` +
+            `**Suggested Video Script & Storyboard:**\n\n${effectiveScript}\n\n` +
+            `The available quantity/credits for this project have been fully used (${totalDeliveredUnits}/${totalOrderedUnits} completed). Please add more usage for your next work using the **Add Usage** button above so we can proceed with producing and rendering this video!`;
+        } else {
+          replyText =
+            `🎬 **Video Request Confirmed!**\n\n` +
+            `I've organized your request into a complete production prompt and registered your Video Request${displayOrderId ? ` (Order ${displayOrderId})` : ''}.\n\n` +
+            `**Production Specifications:**\n` +
+            `- **Project:** ${promptResult.title}\n` +
+            `- **Duration:** ${promptResult.duration}\n` +
+            `- **Aspect Ratio:** ${promptResult.aspectRatio}\n` +
+            `- **Language:** ${promptResult.language}\n` +
+            `- **Mood:** ${promptResult.mood}\n\n` +
+            `**Generated Video Script & Storyboard:**\n\n${effectiveScript}\n\n` +
+            `Your request has been queued for production. You can monitor the progress anytime from **My Orders**!`;
+        }
+
+        const aiMessage = await this.addAssistantMessage(data.chatId, replyText);
+        this.server.to(data.chatId).emit('typing', { isTyping: false });
+        this.server.to(data.chatId).emit('newMessage', aiMessage);
+
+        if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
+          await this.notificationService.create(meta.customerId, {
+            title: `Video Request Created: ${promptResult.title}`,
+            description: `Your video request has been submitted to production.`,
+            href: `/dashboard/orders`,
+          });
+        }
+        return;
+      }
 
       // Pre-creation verification check:
       // Whenever a client asks the AI agent to create something, verify whether the client has hired
@@ -1829,7 +2062,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.isCreationRequest(incoming) ||
         wantsImage ||
         wantsPoster ||
-        wantsVideo ||
         wantsPost ||
         (hasIncomingImage && this.isDesignFeedback(incoming, hasIncomingImage)) ||
         (!hasIncomingImage && this.isImageEditRequest(incoming));
@@ -2510,27 +2742,107 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
           await this.chatService.setWorkflowState(data.chatId, null);
           const details = await this.chatService.getChatMemoryDetails(data.chatId);
-          const productName =
-            (typeof (details as any)?.productName === 'string' && (details as any).productName.trim()) ||
-            (typeof (details as any)?.brandName === 'string' && (details as any).brandName.trim()) ||
-            'your product';
+          const userFullMessage = `Product/Brand: ${dataMap.brief || ''}. Audience/Platform: ${dataMap.audience || ''}. Tone/Requirements: ${dataMap.tone || ''}.`;
 
-          const inclusions = String(dataMap.tone || '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-            .slice(0, 8);
-
-          const script = await this.aiService.generateVideoScript(name, {
-            productName,
-            keyMessage: dataMap.brief || '',
-            targetAudience: dataMap.audience || '',
-            tone: dataMap.tone || '',
-            inclusions,
-            additionalNotes: '',
+          const rawHistory = await this.chatService.getRecentMessages(data.chatId);
+          const promptResult = await this.aiService.generateDetailedVideoPrompt({
+            influencer: {
+              name,
+              bio,
+              industries,
+              contentStyle,
+              voiceId,
+              systemPrompt,
+              serviceType,
+            },
+            userMessage: userFullMessage,
+            chatHistory: rawHistory.map((m) => ({
+              role: m.role.toLowerCase() as any,
+              content: m.content,
+            })),
+            memoryDetails: details as any,
           });
 
-          const aiMessage = await this.addAssistantMessage(data.chatId, script);
+          const meta = await this.chatService.getChatMeta(data.chatId);
+          let finalCustId = resolvedCustomerId || meta?.customerId || (data as any)?.userId || (client.data as any)?.userId;
+          let finalInfId = influencerId || data.influencerId || meta?.influencerId;
+          if (!finalCustId || !finalInfId) {
+            const chatRow = await this.prisma.chat.findUnique({
+              where: { id: data.chatId },
+              select: { customerId: true, influencerId: true },
+            });
+            if (chatRow) {
+              finalCustId = finalCustId || chatRow.customerId;
+              finalInfId = finalInfId || chatRow.influencerId;
+            }
+          }
+          let syncResult: any = null;
+          if (finalCustId && finalInfId) {
+            const workflowContext: Array<{
+              id?: string;
+              role: string;
+              senderName?: string;
+              content: string;
+              createdAt?: string;
+            }> = rawHistory.map((m) => ({
+              id: m.id,
+              role: m.role,
+              senderName: m.role === 'ASSISTANT' ? name : 'Customer',
+              content: m.content,
+              createdAt: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+            }));
+            const wfTargetStatus = isHired && hasRemainingUsage ? OrderStatus.PENDING_REVIEW : OrderStatus.PENDING_PAYMENT;
+            syncResult = await this.chatService.createOrUpdateVideoRequest({
+              customerId: finalCustId,
+              influencerId: finalInfId,
+              chatId: data.chatId,
+              videoPromptResult: promptResult,
+              userMessage: userFullMessage,
+              influencerScript: promptResult.script,
+              conversationContext: workflowContext,
+              initialStatus: wfTargetStatus,
+              isRevision: false,
+            });
+
+            if (syncResult?.orderId) {
+              this.server.emit('videoRequestCreated', {
+                orderId: syncResult.orderId,
+                customerId: finalCustId,
+                influencerId: finalInfId,
+                status: wfTargetStatus,
+              });
+              this.server.emit('orderUpdated', {
+                orderId: syncResult.orderId,
+                customerId: finalCustId,
+                influencerId: finalInfId,
+                status: wfTargetStatus,
+              });
+              this.server.to(data.chatId).emit('videoRequestCreated', {
+                orderId: syncResult.orderId,
+                customerId: finalCustId,
+                influencerId: finalInfId,
+                status: wfTargetStatus,
+              });
+            }
+          }
+
+          const wfDisplayId = syncResult?.orderId
+            ? `#${syncResult.orderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`
+            : '';
+
+          const responseText =
+            `🎬 **Video Request Confirmed!**\n\n` +
+            `I've organized all your requirements into a complete production prompt and registered your Video Request${wfDisplayId ? ` (Order ${wfDisplayId})` : ''}.\n\n` +
+            `**Production Specifications:**\n` +
+            `- **Project:** ${promptResult.title}\n` +
+            `- **Duration:** ${promptResult.duration}\n` +
+            `- **Aspect Ratio:** ${promptResult.aspectRatio}\n` +
+            `- **Language:** ${promptResult.language}\n` +
+            `- **Mood:** ${promptResult.mood}\n\n` +
+            `**Generated Video Script & Storyboard:**\n\n${promptResult.script}\n\n` +
+            `Your request has been queued for production. You can track the progress anytime in **My Orders**!`;
+
+          const aiMessage = await this.addAssistantMessage(data.chatId, responseText);
           this.server.to(data.chatId).emit('typing', { isTyping: false });
           this.server.to(data.chatId).emit('newMessage', aiMessage);
           return;
@@ -2821,8 +3133,115 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       const imageIntent = wantsImage || wantsPoster;
-      const videoIntent = wantsVideo;
+      const videoIntent = wantsVideo || this.isVideoRequest(incoming);
       const postIntent = wantsPost;
+
+      // Handle video request for ANY influencer chat automatically!
+      if (isHired && videoIntent) {
+        const resolvedCustomerId = meta?.customerId || (client.data as any)?.userId;
+        const details = await this.chatService.getChatMemoryDetails(data.chatId);
+        const rawHistory = await this.chatService.getRecentMessages(data.chatId);
+
+        const promptResult = await this.aiService.generateDetailedVideoPrompt({
+          influencer: {
+            name,
+            bio,
+            industries,
+            contentStyle,
+            voiceId,
+            systemPrompt,
+            serviceType,
+          },
+          userMessage: incoming,
+          chatHistory: rawHistory.map((m) => ({
+            role: m.role.toLowerCase() as any,
+            content: m.content,
+          })),
+          memoryDetails: details as any,
+          customChat: {
+            chatProvider: aiConfig?.chatProvider,
+            chatApiUrl: aiConfig?.chatApiUrl,
+            chatApiKey: aiConfig?.chatApiKey,
+            chatModel: aiConfig?.chatModel,
+          },
+        });
+
+        let finalCustId = resolvedCustomerId || meta?.customerId || (data as any)?.userId || (client.data as any)?.userId;
+        let finalInfId = influencerId || data.influencerId || meta?.influencerId;
+        if (!finalCustId || !finalInfId) {
+          const chatRow = await this.prisma.chat.findUnique({
+            where: { id: data.chatId },
+            select: { customerId: true, influencerId: true },
+          });
+          if (chatRow) {
+            finalCustId = finalCustId || chatRow.customerId;
+            finalInfId = finalInfId || chatRow.influencerId;
+          }
+        }
+        let syncResult: any = null;
+        if (finalCustId && finalInfId) {
+          const videoTargetStatus = isHired && hasRemainingUsage ? OrderStatus.PENDING_REVIEW : OrderStatus.PENDING_PAYMENT;
+          syncResult = await this.chatService.createOrUpdateVideoRequest({
+            customerId: finalCustId,
+            influencerId: finalInfId,
+            chatId: data.chatId,
+            videoPromptResult: promptResult,
+            userMessage: incoming,
+            initialStatus: videoTargetStatus,
+            isRevision: false,
+          });
+
+          if (syncResult?.orderId) {
+            this.server.emit('videoRequestCreated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustId,
+              influencerId: finalInfId,
+              status: videoTargetStatus,
+            });
+            this.server.emit('orderUpdated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustId,
+              influencerId: finalInfId,
+              status: videoTargetStatus,
+            });
+            this.server.to(data.chatId).emit('videoRequestCreated', {
+              orderId: syncResult.orderId,
+              customerId: finalCustId,
+              influencerId: finalInfId,
+              status: videoTargetStatus,
+            });
+          }
+        }
+
+        const wizDisplayId = syncResult?.orderId
+          ? `#${syncResult.orderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`
+          : '';
+
+        const replyText =
+          `🎬 **Video Request Confirmed!**\n\n` +
+          `I've organized your request into a complete production prompt and registered your Video Request${wizDisplayId ? ` (Order ${wizDisplayId})` : ''}.\n\n` +
+          `**Production Specifications:**\n` +
+          `- **Project:** ${promptResult.title}\n` +
+          `- **Duration:** ${promptResult.duration}\n` +
+          `- **Aspect Ratio:** ${promptResult.aspectRatio}\n` +
+          `- **Language:** ${promptResult.language}\n` +
+          `- **Mood:** ${promptResult.mood}\n\n` +
+          `**Generated Video Script & Storyboard:**\n\n${promptResult.script}\n\n` +
+          `Your request has been queued for production. You can monitor the progress anytime from **My Orders**!`;
+
+        const aiMessage = await this.addAssistantMessage(data.chatId, replyText);
+        this.server.to(data.chatId).emit('typing', { isTyping: false });
+        this.server.to(data.chatId).emit('newMessage', aiMessage);
+
+        if (meta && this.chatNotificationsEnabled() && this.shouldNotifyUser(meta.customerId, data.chatId)) {
+          await this.notificationService.create(meta.customerId, {
+            title: `Video Request Created: ${promptResult.title}`,
+            description: `Your video request has been submitted to production.`,
+            href: `/dashboard/orders`,
+          });
+        }
+        return;
+      }
       if (serviceType === 'IMAGE_CREATION') {
         if (!imageIntent && videoIntent) {
           const aiMessage = await this.addAssistantMessage(
@@ -3163,16 +3582,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      if (isHired && serviceType === 'VIDEO_CREATION' && wantsVideo) {
-        await this.chatService.setWorkflowState(data.chatId, { kind: 'video', step: 0, data: {} });
-        const aiMessage = await this.addAssistantMessage(
-          data.chatId,
-          `Cool—quick one: what’s the product/brand, and what’s the main message or goal for the video?`,
-        );
-        this.server.to(data.chatId).emit('typing', { isTyping: false });
-        this.server.to(data.chatId).emit('newMessage', aiMessage);
-        return;
-      }
 
       if (isHired && serviceType === 'POST_CREATION' && wantsPost) {
         const cadence = this.parsePostCadence(incoming);
@@ -3225,6 +3634,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Fetch conversation history once — reused for relevance check and response generation.
       // The current user message was already saved above, so it is included here.
       const rawHistory = await this.chatService.getRecentMessages(data.chatId);
+
+      // Collect referenced message IDs that might not be in the recent 20 messages
+      const missingReplyIds = rawHistory
+        .map((m) => this.parseReplyMetadata(m.content))
+        .filter((p) => p.hasReply && p.messageId && !rawHistory.some((h) => h.id === p.messageId))
+        .map((p) => p.messageId as string);
+
+      const fetchedReferencedMessages: Record<string, string> = {};
+      if (missingReplyIds.length > 0) {
+        try {
+          const olderMsgs = await this.chatService.getMessagesByIds(missingReplyIds);
+          for (const om of olderMsgs) {
+            fetchedReferencedMessages[om.id] = om.content.replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '').trim();
+          }
+        } catch {}
+      }
+
       const allMessages = rawHistory.map((m) => {
         const role = m.role === 'USER' ? ('user' as const) : ('assistant' as const);
         const parsed = this.parseReplyMetadata(m.content);
@@ -3235,9 +3661,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             if (targetMsg) {
               const cleaned = targetMsg.content.replace(/^\[reply[^\]]*\][\s\S]*?\[\/reply\]\n*/i, '').trim();
               if (cleaned) fullOriginal = cleaned;
+            } else if (fetchedReferencedMessages[parsed.messageId]) {
+              fullOriginal = fetchedReferencedMessages[parsed.messageId];
             }
           }
-          const formatted = `[REFERENCED / QUOTED MESSAGE by ${parsed.senderName}]:\n"${fullOriginal}"\n\n[USER REPLY / REVISION INSTRUCTION]:\n${parsed.userText}`;
+          const formatted = `[REFERENCED / QUOTED MESSAGE by ${parsed.senderName}]:\n"""\n${fullOriginal}\n"""\n\n[USER REPLY / QUESTION / DIRECTIVE]:\n${parsed.userText}`;
           return {
             role,
             content: formatted,
@@ -3381,31 +3809,44 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           `===================================================\n`;
 
       const fullSystemPrompt =
-        `You are ${name}, an AI influencer/creator.` +
-        (systemPrompt ? `\n\n${this.truncateText(systemPrompt, 5000)}` : '') +
-        `\n\nPROFILE:\n` +
-        `- Name: ${name}\n` +
-        `- Service type: ${serviceType}\n` +
-        (industriesList ? `- Industries: ${industriesList}\n` : '') +
-        (contentStyle ? `- Content style: ${contentStyle}\n` : '') +
+        `You are ${name}, a premier AI influencer and expert creator on Genverce.\n\n` +
+        `=== INFLUENCER IDENTITY & NICHE PROFILE ===\n` +
+        `- Creator Name: ${name}\n` +
+        (topic ? `- Specialized Domain / Topic: ${topic}\n` : '') +
+        (bio ? `- Professional Bio & Background: ${bio}\n` : '') +
+        `- Service Type: ${serviceType}\n` +
+        (industriesList ? `- Core Industries: ${industriesList}\n` : '') +
+        (contentStyle ? `- Content Style & Tone of Voice: ${contentStyle}\n` : '') +
+        (systemPrompt ? `\nCORE PERSONA & IDENTITY GUIDELINES:\n${this.truncateText(systemPrompt, 4500)}\n` : '') +
+        `\n=== NICHE & PERSONALITY ADHERENCE RULES ===\n` +
+        `- STRICT PERSONA IMMERSION: Embody ${name} authentically in every response. You are NOT a generic AI assistant. You are an accomplished creator and authority in ${topic || industriesList || 'your niche'}.\n` +
+        `- AUTHENTIC VOICE & TERMINOLOGY: Always use domain-specific vocabulary, realistic creator perspectives, and professional authority fitting ${name} with your signature content style: "${contentStyle || 'authentic and engaging'}".\n` +
+        `- STAY WITHIN YOUR NICHE: Focus your advice, examples, frameworks, stories, and recommendations within ${topic || industriesList || 'your specialized area'}. If a user asks a question tangentially related, naturally bridge it back to your niche. If completely unrelated, politely explain that your expertise is focused on ${topic || 'your specific field'}.\n` +
+        `- CHARISMA & ENERGY: Never provide bland, cookie-cutter, or robotic answers. Speak with confidence, personality, and distinct creator flair.\n` +
         hireInstruction +
         (compactMemory ? `\n\nCONTEXT MEMORY (Saved Client & Project Information):\n${compactMemory}\n` : '\n') +
         (compactImageContext ? `\n\nIMAGE CONTEXT:\n${compactImageContext}\n` : '') +
-        `\nREPLY & MEMORY RULES:\n` +
+        `\n=== STORY, SCRIPT & LONG-FORM COMPLETION GUARANTEE ===\n` +
+        `- 100% COMPLETE & PROPERLY FINISHED: Any story, script, screenplay, video script, social post, narrative, or deliverable you generate MUST be complete and properly finished. NEVER cut off mid-sentence, mid-scene, or mid-thought.\n` +
+        `- PROPER NARRATIVE ARC: Every script or story must have a captivating beginning/hook, a fully fleshed-out body/scenes, and a definitive conclusion/ending/outro/call-to-action. Pace your content so the entire work is presented in full.\n` +
+        `\n=== MESSAGE REPLY & CONTEXT DIRECTIVE ===\n` +
+        (currentReplyMeta.hasReply
+          ? `- The user has directly replied to a specific referenced message ([REFERENCED / QUOTED MESSAGE]).\n` +
+            `- You MUST examine the quoted message carefully and evaluate the user's reply intent:\n` +
+            `  * IF THE USER ASKS A QUESTION ABOUT IT: Answer specifically, thoroughly, and directly based on the referenced message.\n` +
+            `  * IF THE USER ASKS TO MODIFY, REVISE, TONE-SHIFT, OR EXPAND IT: Deliver the complete revised and improved version directly without preamble.\n` +
+            `  * IF THE USER ASKS TO CONTINUE, EXTEND, OR WRITE THE NEXT SCENE/PART: Seamlessly continue the story/script from where the referenced content ended, maintaining perfect continuity.\n` +
+            `  * IF THE USER GIVES FEEDBACK OR COMMENTS: Acknowledge their feedback authentically in character and provide actionable insights from your domain.\n`
+          : '') +
+        `- When the user replies to or references any message, maintain context continuity and treat the referenced message as the primary focal point of your answer.\n` +
         `- AUTOMATIC MEMORY RETENTION: All remembered client requirements, project specifications, preferences, instructions, decisions, approved approaches, and technical details in CONTEXT MEMORY must be actively respected and recalled.\n` +
         `- NEVER ask the client to repeat or re-specify information that is already present in CONTEXT MEMORY (such as their brand name, product name, format, video length, deadlines, tone, forbidden elements, or approved decisions). Proactively integrate these remembered constraints and choices into all responses.\n` +
         (isGreetingMsg
           ? `- The user is greeting you (e.g. "Hi", "Hello", "Hey"). Respond with a warm, natural, friendly greeting as ${name}. Acknowledge them, reference saved client or brand details if present in CONTEXT MEMORY, and ask how you can assist.\n`
           : '') +
-        (currentReplyMeta.hasReply
-          ? `- REVISION & REPLY HANDLING: The user has specifically replied to and referenced an earlier message in the conversation (tagged with [REFERENCED / QUOTED MESSAGE]). Carefully analyze what the user wants to change, modify, improve, update, correct, or expand in the referenced message. Return the revised and improved version directly and clearly based on their instructions while maintaining brand continuity and conversation context.\n`
-          : '') +
-        `- When the user replies to or references a specific message, understand what they want to change, modify, improve, or update in the referenced message, and return the revised version accordingly.\n` +
-        `- Be concise and conversational, unless revising content or delivering a requested post/asset.\n` +
+        `- Be concise and conversational for quick chat exchanges, but provide thorough, fully developed, and complete content when delivering requested stories, scripts, posts, or deliverables.\n` +
         `- Understand the user's message using the full conversation context, not just the current message. Remember brand details, requirements, preferences, and ongoing requests from prior messages.\n` +
         `- Interpret short messages (such as "yes", "do that", "make it better", "what about this?", or "create one for me") using prior conversation context.\n` +
-        `- Stay focused on your assigned topic and expertise, but do not be overly restrictive. Answer questions, follow-ups, and requests directly or reasonably related to the topic.\n` +
-        `- If relevant, answer naturally and helpfully. If a request is completely unrelated to your area, politely redirect the user back to your expertise. Never randomly change the subject.\n` +
         `- Ask at most one brief follow-up question if needed.\n` +
         `- POST OUTPUT FORMAT: When delivering a completed post or draft for the client, always format it in this exact structure so it is automatically saved to the client's project:\n` +
         `POST\n` +
@@ -3415,9 +3856,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         `Image: [Provide a vivid, detailed visual graphic description prompt for this post. NEVER output a URL, never output "http", and never say "generating image", always provide a descriptive visual prompt]\n\n` +
         `- Do not claim to be human.`;
 
+      // Determine token budget based on intent and content complexity:
+      // Long-form requests (stories, scripts, posts, articles, narratives, revisions) need high token limits (3500)
+      // Standard chat queries get 1500 tokens to ensure responses are never cut off.
+      const isLongFormIntent =
+        /\b(story|script|screenplay|scene|episode|chapter|narrative|tale|dialogue|post|article|newsletter|thread|guide|breakdown|reels?\s*script|tiktok\s*script|youtube\s*script|write\s+me|create\s+a|draft\s+a|compose|full|complete)\b/i.test(
+          userEffectiveText || incoming || '',
+        ) ||
+        currentReplyMeta.hasReply ||
+        wantsPost ||
+        wantsVideo ||
+        serviceType === 'POST_CREATION' ||
+        serviceType === 'VIDEO_CREATION';
+
+      const maxTokens = isLongFormIntent ? 3500 : 1500;
+
       let responseText: string;
       try {
-        responseText = await this.aiService.generateResponse(fullSystemPrompt, messages, 420, aiConfig ?? undefined);
+        responseText = await this.aiService.generateResponse(fullSystemPrompt, messages, maxTokens, aiConfig ?? undefined);
       } catch (error) {
         console.error('AI generation error:', error);
         let providerInfo = '';

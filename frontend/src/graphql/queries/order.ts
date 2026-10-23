@@ -143,7 +143,7 @@ export const GET_ORDER = gql`
 `;
 
 export const GET_ALL_ORDERS = gql`
-  query GetAllOrders($status: OrderStatus, $influencerId: String) {
+  query GetAllOrders($status: String, $influencerId: String) {
     allOrders(status: $status, influencerId: $influencerId) {
       id
       customerId

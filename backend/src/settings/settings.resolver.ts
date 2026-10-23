@@ -29,6 +29,51 @@ class UpdateSiteSettingsInput {
   @IsOptional()
   @IsString()
   chatModel?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  audioProvider?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  audioApiUrl?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  audioApiKey?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  audioModel?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  videoProvider?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  videoApiUrl?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  videoApiKey?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  videoModel?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  customVideoEngines?: string;
 }
 
 @Resolver()

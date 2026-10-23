@@ -4,25 +4,30 @@ import { PackageType, DeliveryType } from '@prisma/client';
 
 @InputType()
 export class ProjectBriefInput {
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  productName: string;
+  productName?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  keyMessage: string;
+  keyMessage?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  targetAudience: string;
+  targetAudience?: string;
 
-  @Field()
+  @Field({ nullable: true })
+  @IsOptional()
   @IsString()
-  tone: string;
+  tone?: string;
 
-  @Field(() => [String])
+  @Field(() => [String], { nullable: true })
+  @IsOptional()
   @IsArray()
-  inclusions: string[];
+  inclusions?: string[];
 
   @Field({ nullable: true })
   @IsOptional()
@@ -31,7 +36,13 @@ export class ProjectBriefInput {
 
   @Field(() => String, { nullable: true })
   @IsOptional()
+  @IsString()
   posterPlan?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  videoPrompt?: string;
 }
 
 @InputType()

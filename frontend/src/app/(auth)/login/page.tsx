@@ -85,7 +85,7 @@ export default function LoginPage() {
         </div>
 
         <div className="glass-card p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" suppressHydrationWarning>
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
                 Email
@@ -97,6 +97,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 bg-background border border-border rounded-lg text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
                 placeholder="you@example.com"
                 required
+                suppressHydrationWarning
               />
             </div>
 
@@ -104,7 +105,7 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-text-secondary mb-2">
                 Password
               </label>
-              <div className="relative">
+              <div className="relative" suppressHydrationWarning>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -113,6 +114,7 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   required
                   minLength={8}
+                  suppressHydrationWarning
                 />
                 <button
                   type="button"

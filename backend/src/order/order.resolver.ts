@@ -111,6 +111,44 @@ export class OrderResolver {
 
   @Mutation(() => OrderModel)
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async adminGenerateOrderVideo(
+    @Args('orderId') orderId: string,
+    @Args('prompt', { nullable: true }) prompt?: string,
+    @Args('duration', { nullable: true }) duration?: string,
+    @Args('aspectRatio', { nullable: true }) aspectRatio?: string,
+    @Args('videoProvider', { nullable: true }) videoProvider?: string,
+    @Args('videoModel', { nullable: true }) videoModel?: string,
+  ) {
+    return this.orderService.generateOrderVideo({
+      orderId,
+      prompt,
+      duration,
+      aspectRatio,
+      videoProvider,
+      videoModel,
+    });
+  }
+
+  @Mutation(() => OrderModel)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async adminSendOrderVideoToClient(
+    @Args('orderId') orderId: string,
+    @Args('videoUrl', { nullable: true }) videoUrl?: string,
+    @Args('customMessage', { nullable: true }) customMessage?: string,
+    @Args('notes', { nullable: true }) notes?: string,
+  ) {
+    return this.orderService.sendOrderVideoToClient({
+      orderId,
+      videoUrl,
+      customMessage,
+      notes,
+    });
+  }
+
+  @Mutation(() => OrderModel)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.REVIEWER)
   async rejectOrder(
     @CurrentUser() user: any,
@@ -120,3 +158,4 @@ export class OrderResolver {
     return this.orderService.updateStatus(id, 'REJECTED', notes, user.id);
   }
 }
+

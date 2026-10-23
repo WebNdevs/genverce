@@ -13,6 +13,6 @@ import { FaqModule } from '../faq/faq.module';
 @Module({
   imports: [JwtModule.register({}), ConfigModule, NotificationModule, AiModule, FaqModule],
   providers: [ChatService, ChatResolver, ChatGateway, PosterSchedulerService, PineconeMemoryService],
-  exports: [ChatService, PineconeMemoryService],
+  exports: [ChatService, PineconeMemoryService, ChatGateway],
 })
 export class ChatModule {}

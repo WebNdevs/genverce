@@ -71,6 +71,15 @@ function Lightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: (
 export function ImageBubble({ src, alt, msgId }: ImageBubbleProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
+  const isVideo = Boolean(
+    src && (
+      /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(src) ||
+      src.includes('/videos/') ||
+      src.includes('video-delivery') ||
+      src.startsWith('data:video/')
+    )
+  );
+
   const handleDownload = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -79,7 +88,7 @@ export function ImageBubble({ src, alt, msgId }: ImageBubbleProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `generated-${msgId}.png`;
+      a.download = isVideo ? `video-deliverable-${msgId}.mp4` : `generated-${msgId}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -87,7 +96,36 @@ export function ImageBubble({ src, alt, msgId }: ImageBubbleProps) {
     } catch {
       window.open(src, '_blank');
     }
-  }, [src, msgId]);
+  }, [src, msgId, isVideo]);
+
+  if (isVideo) {
+    return (
+      <div className="relative group/vid max-w-md rounded-2xl overflow-hidden border border-border/80 bg-black/95 shadow-xl">
+        <video
+          controls
+          playsInline
+          src={src}
+          className="w-full max-h-[320px] object-contain rounded-t-xl"
+        >
+          Your browser does not support HTML5 video playback.
+        </video>
+        <div className="flex items-center justify-between px-3 py-2 bg-surface/90 border-t border-border/60 text-xs">
+          <span className="text-[11px] font-medium text-emerald-400 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Video Deliverable
+          </span>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface hover:bg-surface/80 border border-border text-text-primary text-[11px] font-semibold transition-colors"
+          >
+            <Download size={12} className="text-emerald-400" />
+            Download MP4
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

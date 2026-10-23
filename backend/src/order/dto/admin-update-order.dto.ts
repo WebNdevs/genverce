@@ -1,6 +1,7 @@
 import { InputType, Field, Float } from '@nestjs/graphql';
 import { IsString, IsEnum, IsBoolean, IsOptional, IsNumber, IsArray } from 'class-validator';
 import { PackageType, DeliveryType, OrderStatus } from '@prisma/client';
+import { GraphQLJSONObject } from 'graphql-type-json';
 import { ProjectBriefInput } from './create-order.dto';
 
 @InputType()
@@ -34,9 +35,9 @@ export class AdminUpdateOrderInput {
   @IsString()
   id: string;
 
-  @Field(() => ProjectBriefInput, { nullable: true })
+  @Field(() => GraphQLJSONObject, { nullable: true })
   @IsOptional()
-  projectBrief?: ProjectBriefInput;
+  projectBrief?: any;
 
   @Field(() => String, { nullable: true })
   @IsOptional()
@@ -67,4 +68,14 @@ export class AdminUpdateOrderInput {
   @IsOptional()
   @IsArray()
   generatedImages?: GeneratedImageInput[];
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  videoUrl?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  thumbnailUrl?: string;
 }

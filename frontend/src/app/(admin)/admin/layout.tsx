@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ReactNode, useState } from 'react';
 import {
   Video,
+  Film,
   DollarSign,
   Ticket,
   TrendingUp,
@@ -19,6 +20,7 @@ import {
   MessageSquare,
   Menu,
   X,
+  Package,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/layout/navbar';
@@ -31,10 +33,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/orders', label: 'Orders', icon: Video },
+    { href: '/admin/video-requests', label: 'Video Requests', icon: Video },
+    { href: '/admin/video-generator', label: 'Video Generator', icon: Film },
+    { href: '/admin/orders', label: 'Orders', icon: Package },
     { href: '/admin/reviewer', label: 'Review Queue', icon: TrendingUp },
-    { href: '/admin/influencers', label: 'Influencers', icon: Video },
-    { href: '/admin/users', label: 'Users', icon: Users },
+    { href: '/admin/influencers', label: 'Influencers', icon: Users },
+    { href: '/admin/users', label: 'Users', icon: User },
     { href: '/dashboard/chats', label: 'My Chat', icon: MessageSquare },
     { href: '/admin/tickets', label: 'Tickets', icon: Ticket },
     { href: '/admin/revenue', label: 'Revenue', icon: DollarSign },
@@ -53,9 +57,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             return (
               <div key="settings" className="space-y-1">
                 <div
-                  className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-                    isActive ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
-                  }`}
+                  className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${isActive ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
+                    }`}
                 >
                   <Link href={item.href} className="flex items-center gap-3" onClick={onClose}>
                     <Icon size={16} className="flex-shrink-0" />
@@ -74,9 +77,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     <Link
                       href="/profile/edit"
                       onClick={onClose}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                        pathname.startsWith('/profile/edit') ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
-                      }`}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${pathname.startsWith('/profile/edit') ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
+                        }`}
                     >
                       <User size={16} className="flex-shrink-0" />
                       <span className="truncate">Profile Edit</span>
@@ -84,9 +86,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     <Link
                       href="/admin/settings"
                       onClick={onClose}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                        pathname === '/admin/settings' ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
-                      }`}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${pathname === '/admin/settings' ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
+                        }`}
                     >
                       <MessageSquareQuote size={16} className="flex-shrink-0" />
                       <span className="truncate">Chat AI API</span>
@@ -102,9 +103,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                isActive ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
-              }`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${isActive ? 'bg-background text-text-primary' : 'text-text-secondary hover:bg-background'
+                }`}
             >
               <Icon size={16} className="flex-shrink-0" />
               <span className="truncate">{item.label}</span>

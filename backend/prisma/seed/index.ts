@@ -194,6 +194,10 @@ async function main() {
     console.log(`✓ Influencer created: ${influencer.name} (${influencer.id})`);
   }
 
+  // Seed all 30 additional influencers
+  const { seed30Influencers } = await import('./seed-30-influencers');
+  await seed30Influencers(prisma);
+
   console.log('\n🎉 Seeding complete!');
   console.log('\nDefault credentials:');
   console.log('  Admin:    admin@genverce.ai / admin123456');

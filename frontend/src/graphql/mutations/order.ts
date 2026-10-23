@@ -65,12 +65,34 @@ export const ADMIN_UPDATE_ORDER = gql`
   mutation AdminUpdateOrder($input: AdminUpdateOrderInput!) {
     adminUpdateOrder(input: $input) {
       id
+      customerId
+      influencerId
       status
       price
       package
       deliveryType
       aiDisclosure
+      videoUrl
+      thumbnailUrl
+      videosOrdered
+      videosDelivered
+      deliveredAt
+      createdAt
       projectBrief
+      influencer {
+        id
+        name
+        avatar
+        serviceType
+        rating
+      }
+      customer {
+        id
+        name
+        email
+        avatar
+        company
+      }
       generatedImages {
         url
         messageId
@@ -91,3 +113,98 @@ export const REQUEST_REFUND = gql`
     }
   }
 `;
+
+export const ADMIN_GENERATE_ORDER_VIDEO = gql`
+  mutation AdminGenerateOrderVideo(
+    $orderId: String!
+    $prompt: String
+    $duration: String
+    $aspectRatio: String
+    $videoProvider: String
+    $videoModel: String
+  ) {
+    adminGenerateOrderVideo(
+      orderId: $orderId
+      prompt: $prompt
+      duration: $duration
+      aspectRatio: $aspectRatio
+      videoProvider: $videoProvider
+      videoModel: $videoModel
+    ) {
+      id
+      customerId
+      influencerId
+      status
+      price
+      package
+      deliveryType
+      videoUrl
+      thumbnailUrl
+      videosOrdered
+      videosDelivered
+      deliveredAt
+      createdAt
+      projectBrief
+      influencer {
+        id
+        name
+        avatar
+        serviceType
+        rating
+      }
+      customer {
+        id
+        name
+        email
+        avatar
+        company
+      }
+    }
+  }
+`;
+
+export const ADMIN_SEND_ORDER_VIDEO_TO_CLIENT = gql`
+  mutation AdminSendOrderVideoToClient(
+    $orderId: String!
+    $videoUrl: String
+    $customMessage: String
+    $notes: String
+  ) {
+    adminSendOrderVideoToClient(
+      orderId: $orderId
+      videoUrl: $videoUrl
+      customMessage: $customMessage
+      notes: $notes
+    ) {
+      id
+      customerId
+      influencerId
+      status
+      price
+      package
+      deliveryType
+      videoUrl
+      thumbnailUrl
+      videosOrdered
+      videosDelivered
+      deliveredAt
+      createdAt
+      projectBrief
+      influencer {
+        id
+        name
+        avatar
+        serviceType
+        rating
+      }
+      customer {
+        id
+        name
+        email
+        avatar
+        company
+      }
+    }
+  }
+`;
+

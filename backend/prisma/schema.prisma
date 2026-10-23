@@ -223,9 +223,21 @@ model SiteSettings {
   chatApiUrl   String?
   chatApiKey   String?
   chatModel    String?
+  chatProvider String?
+
+  audioProvider String?
+  audioApiUrl   String?
+  audioApiKey   String?
+  audioModel    String?
+
+  videoProvider String?
+  videoApiUrl   String?
+  videoApiKey   String?
+  videoModel    String?
+  customVideoEngines String? @db.Text
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  chatProvider String?
 
   @@map("site_settings")
 }
@@ -390,3 +402,22 @@ enum PaymentStatus {
   REFUNDED
   PARTIALLY_REFUNDED
 }
+
+model StandaloneVideo {
+  id           String   @id @default(uuid())
+  title        String?
+  prompt       String   @db.Text
+  videoUrl     String   @db.Text
+  thumbnailUrl String?  @db.Text
+  provider     String?
+  model        String?
+  duration     String?
+  aspectRatio  String?
+  status       String   @default("COMPLETED")
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("standalone_videos")
+}
+

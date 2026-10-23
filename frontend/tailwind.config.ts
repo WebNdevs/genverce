@@ -28,7 +28,16 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['var(--font-plus-jakarta)', 'system-ui', 'sans-serif'],
+        sans: [
+          'var(--font-plus-jakarta, "Plus Jakarta Sans")',
+          '"Plus Jakarta Sans"',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'sans-serif',
+        ],
       },
       fontSize: {
         hero: ['72px', { lineHeight: '1.1', fontWeight: '700' }],

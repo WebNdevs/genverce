@@ -7,6 +7,16 @@ export const UPDATE_SITE_SETTINGS = gql`
       chatApiUrl
       chatApiKey
       chatModel
+      audioProvider
+      audioApiUrl
+      audioApiKey
+      audioModel
+      videoProvider
+      videoApiUrl
+      videoApiKey
+      videoModel
+      customVideoEngines
     }
   }
 `;
+
